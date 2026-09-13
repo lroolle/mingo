@@ -14,6 +14,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The fence tests run for real here: bubblewrap on Linux, sandbox-exec
+      # on macOS. TestFenceIsRealOnCI fails the job if either is missing, so
+      # a silent fence=none cannot turn the suite green.
+      - name: install bubblewrap
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all --share-net --die-with-parent -- /bin/true && echo "bwrap ok"
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go test -race ./...
+      - run: go test -race -count=1 ./...
+      - run: go test -run '^$' -bench . -benchtime 200ms ./...

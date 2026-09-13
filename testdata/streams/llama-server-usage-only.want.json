@@ -1,0 +1,1 @@
+{"content":"","finish":"tool_calls","reasoning":true,"tool_calls":[{"id":"call_1","name":"read","arguments":"{\"path\":\"add.go\"}"}],"usage":{"prompt":1412,"cached":1280,"completion":31}}

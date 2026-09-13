@@ -1,3 +1,4 @@
-/spark
+/mote
 /dist/
-.spark/sessions/
+.mote/sessions/
+/eval/results/

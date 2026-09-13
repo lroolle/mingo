@@ -1,0 +1,1 @@
+{"content":"","finish":"tool_calls","reasoning":true,"tool_calls":[{"id":"call_00_pGzgeKBfmyz4q45NGZqS3463","name":"read","arguments":"{\"path\": \"add.go\"}"}],"usage":{"prompt":305,"cached":0,"completion":85}}

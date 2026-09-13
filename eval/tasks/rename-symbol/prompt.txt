@@ -1,0 +1,1 @@
+Rename the function OldName to Greet everywhere in this package, including its doc comment. Verify with go build ./... and report in one sentence.

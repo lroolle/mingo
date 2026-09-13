@@ -1,0 +1,1 @@
+Add has a bug. Fix it, verify with go vet, and tell me in two sentences.

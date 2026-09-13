@@ -1,0 +1,1 @@
+How many exported (capitalized) top-level functions does this package have across all .go files? Answer with the number first, then one sentence naming the files. Do not change anything.
