@@ -68,38 +68,37 @@ func TestConsoleSubIndentsAndStaysOffStdout(t *testing.T) {
 
 func TestConfirmAnswersAndCancels(t *testing.T) {
 	c, _, errb := newTestConsole(false)
-	sb, _ := newTestSandbox(t, ModeWorkspace)
-	confirm := c.Confirm(sb)
+	confirm := c.Confirm()
 	go func() { c.input <- "y" }()
-	if !confirm(context.Background(), "rm x") {
-		t.Fatal("y must allow")
+	if confirm(context.Background(), "rm x") != AllowOnce {
+		t.Fatal("y must allow once")
 	}
 	if !strings.Contains(errb.String(), "allow exec? rm x") {
 		t.Fatalf("prompt: %q", errb.String())
 	}
 	go func() { c.input <- "" }()
-	if confirm(context.Background(), "rm x") {
+	if confirm(context.Background(), "rm x") != Deny {
 		t.Fatal("enter must deny")
 	}
 	go func() { c.input <- "a" }()
-	if !confirm(context.Background(), "rm x") || !sb.always["exec"] {
-		t.Fatal("a must allow and remember")
+	if confirm(context.Background(), "rm x") != AllowAlways {
+		t.Fatal("a must answer always; the sandbox applies it")
 	}
 	// a cancelled turn answers no without waiting for a line
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	done := make(chan bool)
-	go func() { done <- confirm(ctx, "rm y") }()
+	go func() { done <- confirm(ctx, "rm y") == Deny }()
 	select {
-	case ok := <-done:
-		if ok {
+	case denied := <-done:
+		if !denied {
 			t.Fatal("cancel must deny")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("confirm blocked on stdin after cancel")
 	}
 	close(c.input)
-	if confirm(context.Background(), "rm z") {
+	if confirm(context.Background(), "rm z") != Deny {
 		t.Fatal("closed stdin must deny")
 	}
 }
@@ -139,6 +138,23 @@ func TestParseConfig(t *testing.T) {
 	}
 	if _, err := parseConfig([]string{"-think", "wild"}); err == nil {
 		t.Fatal("bad think level must fail")
+	}
+	// explicit boundaries fail closed without a fence, -unfenced accepts
+	none := Fence{Kind: "none"}
+	if err := requireFence(&Config{NoNet: true, Mode: ModeWorkspace}, none); err == nil || !strings.Contains(err.Error(), "-unfenced") {
+		t.Fatalf("no-net without a fence must fail: %v", err)
+	}
+	if err := requireFence(&Config{Mode: ModeReadOnly}, none); err == nil {
+		t.Fatal("read-only without a fence must fail")
+	}
+	if err := requireFence(&Config{Mode: ModeReadOnly, Unfenced: true}, none); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireFence(&Config{Mode: ModeWorkspace}, none); err != nil {
+		t.Fatal("workspace never asked for a fence")
+	}
+	if err := requireFence(&Config{NoNet: true, Mode: ModeReadOnly}, Fence{Kind: "bwrap"}); err != nil {
+		t.Fatal("a fence satisfies both")
 	}
 	if _, err := parseConfig([]string{"-provider", "nope"}); err == nil {
 		t.Fatal("bad provider must fail")

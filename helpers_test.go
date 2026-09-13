@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -128,6 +129,15 @@ func (q *quietUI) Note(f string, a ...any) {
 }
 func (q *quietUI) Sub() UI { return q }
 func (q *quietUI) End()    {}
+
+// cancellingUI cancels the turn from the ToolCall hook: the last moment
+// before the loop dispatches a tool.
+type cancellingUI struct {
+	*quietUI
+	cancel context.CancelFunc
+}
+
+func (c *cancellingUI) ToolCall(name, s string) { c.cancel(); c.quietUI.ToolCall(name, s) }
 
 // --- builders
 

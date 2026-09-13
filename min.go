@@ -72,6 +72,7 @@ const (
 var (
 	errBudget    = errors.New("budget exhausted")
 	errTruncated = errors.New("reply cut at the token cap")
+	errMalformed = errors.New("malformed tool batch") // the reply cannot be acted on and is not retried
 )
 
 // Provider describes one OpenAI-compatible chat endpoint and the two places
@@ -164,6 +165,7 @@ type Config struct {
 	Home       string // ~/.min
 	Mode       Mode
 	NoNet      bool
+	Unfenced   bool   // accept exec with no OS fence even when a mode asked for one
 	Prompt     string // headless prompt; empty means interactive
 	Resume     string // "", "last", or a session id
 	MaxRounds  int
@@ -191,7 +193,8 @@ func parseConfig(args []string) (*Config, error) {
 	fs.StringVar(&root, "cwd", ".", "sandbox root and working directory")
 	fs.StringVar(&modeName, "sandbox", envOr(envPrefix+"SANDBOX", "workspace"), "read-only | workspace | full")
 	fs.BoolVar(&yolo, "yolo", false, "full sandbox and never ask (same as -sandbox full)")
-	fs.BoolVar(&cfg.NoNet, "no-net", false, "run exec without network when the fence can")
+	fs.BoolVar(&cfg.NoNet, "no-net", false, "run exec without network (needs a fence)")
+	fs.BoolVar(&cfg.Unfenced, "unfenced", false, "accept read-only or no-net exec with no OS fence: the policy gate alone")
 	fs.StringVar(&cfg.Prompt, "p", "", "run one prompt headless and exit")
 	fs.StringVar(&cfg.Resume, "resume", "", "resume a session: 'last' or an id")
 	fs.IntVar(&cfg.MaxRounds, "max-rounds", 60, "tool rounds per user turn; the loop stops there")
@@ -431,7 +434,7 @@ func isRetryable(err error) bool {
 	if errors.As(err, &ae) {
 		return ae.Status == 429 || ae.Status >= 500
 	}
-	return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errBudget)
+	return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errBudget) && !errors.Is(err, errMalformed)
 }
 
 func (c *Client) request(msgs []Message, tools []ToolSpec) map[string]any {
@@ -673,7 +676,31 @@ func assemble(r io.Reader, sink Sink) (*Reply, error) {
 	for _, i := range idx {
 		reply.ToolCalls = append(reply.ToolCalls, *calls[i])
 	}
+	if err := validateBatch(reply.ToolCalls); err != nil {
+		return nil, err
+	}
 	return reply, nil
+}
+
+// validateBatch rejects a reply whose tool calls cannot be answered
+// unambiguously: every call needs a name and an id, and no two calls in
+// one batch may share an id, or results and resume repair lose track of
+// which call they belong to. The whole batch is judged before any of it
+// runs.
+func validateBatch(calls []ToolCall) error {
+	seen := map[string]bool{}
+	for i, c := range calls {
+		switch {
+		case c.Function.Name == "":
+			return fmt.Errorf("%w: call %d has no name", errMalformed, i)
+		case c.ID == "":
+			return fmt.Errorf("%w: call %d (%s) has no id", errMalformed, i, c.Function.Name)
+		case seen[c.ID]:
+			return fmt.Errorf("%w: id %q appears twice", errMalformed, c.ID)
+		}
+		seen[c.ID] = true
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -864,13 +891,24 @@ type Sandbox struct {
 	Root    string
 	fs      *os.Root // kernel-enforced jail for every file open; Resolve decides policy, this enforces it
 	Mode    Mode
-	Confirm func(ctx context.Context, action string) bool // nil in headless: Ask becomes Deny
+	Confirm func(ctx context.Context, action string) Decision // nil in headless: Ask becomes Deny
 	Fence   Fence
 	env     []string
 
 	mu     sync.Mutex
 	always map[string]bool // "exec" once the user answered "always"
 }
+
+// Decision is what the person at the console answered. The console only
+// collects it; the sandbox that asked applies it to its own state, so a
+// sub-agent's prompt can never widen its parent's authority.
+type Decision int
+
+const (
+	Deny Decision = iota
+	AllowOnce
+	AllowAlways // for the rest of this sandbox's session
+)
 
 func newSandbox(cfg *Config) (*Sandbox, error) {
 	fsRoot, err := os.OpenRoot(cfg.Root)
@@ -983,10 +1021,14 @@ func (s *Sandbox) Exec(ctx context.Context, cmd string) error {
 	if s.Confirm == nil {
 		return errors.New("command needs confirmation and nobody is at the console; say what you need or run with -yolo")
 	}
-	if !s.Confirm(ctx, cmd) {
-		return errors.New("the user declined this command")
+	switch s.Confirm(ctx, cmd) {
+	case AllowAlways:
+		s.Always("exec")
+		return nil
+	case AllowOnce:
+		return nil
 	}
-	return nil
+	return errors.New("the user declined this command")
 }
 
 // child derives a sandbox for a sub-agent: same root, env and fence, a mode
@@ -999,7 +1041,7 @@ func (s *Sandbox) child(readonly bool) *Sandbox {
 	}
 	if s.Confirm != nil {
 		outer := s.Confirm
-		c.Confirm = func(ctx context.Context, action string) bool { return outer(ctx, "[sub-agent] "+action) }
+		c.Confirm = func(ctx context.Context, action string) Decision { return outer(ctx, "[sub-agent] "+action) }
 	}
 	return c
 }
@@ -1174,18 +1216,28 @@ func (f Fence) String() string {
 
 // cacheDirs stay writable in every mode: a build cache is not user data,
 // and go vet without one recompiles the world on every call.
+// Only cache subtrees: GOPATH and CARGO_HOME also hold binaries and
+// config, and an environment variable naming a directory is not consent
+// to let exec write the whole of it.
 func (f Fence) cacheDirs() []string {
 	dirs := []string{
 		envOr("XDG_CACHE_HOME", filepath.Join(f.Home, ".cache")),
 		filepath.Join(f.Home, "Library", "Caches"),
 		filepath.Join(f.Home, "go", "pkg"),
 		filepath.Join(f.Home, ".cargo", "registry"),
+		filepath.Join(f.Home, ".cargo", "git"),
 		filepath.Join(f.Home, ".npm"),
 	}
-	for _, k := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "CARGO_HOME"} {
+	for _, k := range []string{"GOCACHE", "GOMODCACHE"} {
 		if v := os.Getenv(k); v != "" {
 			dirs = append(dirs, v)
 		}
+	}
+	if v := os.Getenv("GOPATH"); v != "" {
+		dirs = append(dirs, filepath.Join(v, "pkg"))
+	}
+	if v := os.Getenv("CARGO_HOME"); v != "" {
+		dirs = append(dirs, filepath.Join(v, "registry"), filepath.Join(v, "git"))
 	}
 	return dirs
 }
@@ -1328,19 +1380,105 @@ var autoRunDeny = map[string][]string{
 // rename when given a name.
 var autoRunNoArgs = map[string]bool{"git branch": true, "git tag": true, "git remote": true, "hostname": true}
 
+// autoRunMaxFiles caps the operands of verbs whose second operand is an
+// output file: uniq in out.
+var autoRunMaxFiles = map[string]int{"uniq": 1}
+
 var (
-	shellOps         = regexp.MustCompile("\\$\\(|`|<\\(|>\\(|>|\\bxargs\\b|\\bsudo\\b|\\bdoas\\b|\\bsu\\b|\\beval\\b|\\bexec\\b")
+	shellOps         = regexp.MustCompile("\\$[A-Za-z_{(]|`|<\\(|>\\(|>|\\bxargs\\b|\\bsudo\\b|\\bdoas\\b|\\bsu\\b|\\beval\\b|\\bexec\\b")
 	harmlessRedirect = regexp.MustCompile(`\d*>&\d|\d*>\s*/dev/null`)
-	segmentSep       = regexp.MustCompile(`\|\||&&|[|;&\n]`)
 	assignmentRe     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 	assignDeny       = regexp.MustCompile(`^(PATH|LD_[A-Z_]*|DYLD_[A-Z_]*|GIT_[A-Z_]*|GO[A-Z]*|BASH_ENV|ENV|IFS)=`)
 )
 
+// shellSplit cuts a command into simple commands and each of those into
+// words the way sh would, honouring single quotes, double quotes and
+// backslashes, and nothing more: expansions were refused before this runs,
+// so what the shell would execute is exactly what is returned. ok is false
+// on an unterminated quote or a trailing backslash.
+func shellSplit(cmd string) (segments [][]string, ok bool) {
+	var seg []string
+	var cur []rune
+	inWord := false
+	flush := func() {
+		if inWord {
+			seg = append(seg, string(cur))
+			cur, inWord = nil, false
+		}
+	}
+	rs := []rune(cmd)
+	for i := 0; i < len(rs); i++ {
+		c := rs[i]
+		switch {
+		case c == '\\':
+			if i+1 >= len(rs) {
+				return nil, false
+			}
+			i++
+			cur = append(cur, rs[i])
+			inWord = true
+		case c == '\'':
+			j := i + 1
+			for j < len(rs) && rs[j] != '\'' {
+				j++
+			}
+			if j >= len(rs) {
+				return nil, false
+			}
+			cur = append(cur, rs[i+1:j]...)
+			i, inWord = j, true
+		case c == '"':
+			j := i + 1
+			for ; j < len(rs) && rs[j] != '"'; j++ {
+				if rs[j] == '\\' && j+1 < len(rs) && strings.ContainsRune("\"\\$`", rs[j+1]) {
+					j++
+				}
+				cur = append(cur, rs[j])
+			}
+			if j >= len(rs) {
+				return nil, false
+			}
+			i, inWord = j, true
+		case c == '|' || c == '&' || c == ';' || c == '\n':
+			flush()
+			segments = append(segments, seg)
+			seg = nil
+			if i+1 < len(rs) && (c == '|' || c == '&') && rs[i+1] == c {
+				i++
+			}
+		case c == ' ' || c == '\t' || c == '\r':
+			flush()
+		default:
+			cur = append(cur, c)
+			inWord = true
+		}
+	}
+	flush()
+	return append(segments, seg), true
+}
+
+// deniedFlag reports whether a word is one of a verb's writing flags,
+// after quoting was removed: the flag itself, --flag=value, a short flag
+// with its value attached (-oout), or a short flag inside a cluster (-ro).
+func deniedFlag(word string, deny []string) bool {
+	for _, d := range deny {
+		if word == d || strings.HasPrefix(word, d+"=") {
+			return true
+		}
+		if len(d) == 2 && strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "--") && strings.ContainsRune(word[1:], rune(d[1])) {
+			return true
+		}
+	}
+	return false
+}
+
 // autoRun classifies a shell command as one that may run without asking:
-// every segment of every pipeline, list and line must be a listed verb with
-// none of its writing flags; any redirection (except to stderr or
-// /dev/null), substitution, escalation, path-qualified verb, or environment
-// assignment that changes what a verb resolves to fails the whole command.
+// every simple command of every pipeline, list and line must be a listed
+// verb with none of its writing flags; any redirection (except to stderr
+// or /dev/null), substitution, expansion, escalation, path-qualified verb,
+// glob in a flag, or environment assignment that changes what a verb
+// resolves to fails the whole command. This is a convenience gate: a
+// refusal costs one prompt, so every doubt is a refusal.
 func autoRun(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -1350,8 +1488,11 @@ func autoRun(cmd string) bool {
 	if shellOps.MatchString(cmd) {
 		return false
 	}
-	for _, seg := range segmentSep.Split(cmd, -1) {
-		fields := strings.Fields(seg)
+	segments, ok := shellSplit(cmd)
+	if !ok {
+		return false
+	}
+	for _, fields := range segments {
 		for len(fields) > 0 && assignmentRe.MatchString(fields[0]) {
 			if assignDeny.MatchString(fields[0]) {
 				return false
@@ -1381,18 +1522,27 @@ func autoRun(cmd string) bool {
 		} else if !autoRunVerbs[verb] {
 			return false
 		}
-		if autoRunNoArgs[key] {
-			for _, f := range rest {
-				if !strings.HasPrefix(f, "-") {
-					return false
-				}
+		files := 0
+		for _, f := range rest {
+			if !strings.HasPrefix(f, "-") {
+				files++
 			}
 		}
+		if autoRunNoArgs[key] && files > 0 {
+			return false
+		}
+		if n, ok := autoRunMaxFiles[verb]; ok && files > n {
+			return false
+		}
+		if verb == "date" && files > 0 && !strings.HasPrefix(rest[0], "+") {
+			return false // date MMDDhhmm sets the clock
+		}
 		for _, f := range args {
-			for _, d := range autoRunDeny[verb] {
-				if f == d || strings.HasPrefix(f, d+"=") {
-					return false
-				}
+			if strings.HasPrefix(f, "-") && strings.ContainsAny(f, "*?[") {
+				return false // a glob can expand to a writing flag
+			}
+			if deniedFlag(f, autoRunDeny[verb]) {
+				return false
 			}
 		}
 	}
@@ -2124,6 +2274,15 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 				result = "error: this is the same call with the same arguments that just failed; it was not run again. Change the arguments or the approach"
 			} else {
 				a.ui.ToolCall(call.Function.Name, summarize(call))
+				if ctx.Err() != nil {
+					// Cancellation already observable at the moment of
+					// dispatch is a reason not to start: this call and the
+					// rest of the batch are closed unexecuted.
+					if err := a.closeBatch(reply.ToolCalls[i:], "error: cancelled by the user before this call ran; not executed"); err != nil {
+						return "", err
+					}
+					return "", ctx.Err()
+				}
 				a.tb.countCall()
 				result = a.tb.Call(ctx, call, a.specs)
 			}
@@ -2132,12 +2291,9 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 			if err := a.append(Message{Role: "tool", ToolCallID: call.ID, Content: result}); err != nil {
 				return "", err
 			}
-			if ctx.Err() != nil {
-				if err := a.closeBatch(reply.ToolCalls[i+1:], "error: cancelled by the user before this call ran; not executed"); err != nil {
-					return "", err
-				}
-				return "", ctx.Err()
-			}
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
 		}
 	}
 }
@@ -2913,10 +3069,11 @@ func (c *Console) Sub() UI {
 	return &Console{out: c.err, err: c.err, color: c.color, quiet: true, input: c.input, prefix: c.prefix + "  | ", atStart: true}
 }
 
-// Confirm asks the person at the console. "a" answers yes for the rest of
-// the session. A cancelled turn answers no.
-func (c *Console) Confirm(sb *Sandbox) func(context.Context, string) bool {
-	return func(ctx context.Context, action string) bool {
+// Confirm asks the person at the console and reports the answer. It holds
+// no authority: the sandbox that asked applies the decision. A cancelled
+// turn answers no.
+func (c *Console) Confirm() func(context.Context, string) Decision {
+	return func(ctx context.Context, action string) Decision {
 		c.mu.Lock()
 		c.endLine()
 		fmt.Fprintf(c.err, "%s [y/N/a=always] ", c.paint(cPink, "allow exec? "+oneLine(action, 200)))
@@ -2925,21 +3082,20 @@ func (c *Console) Confirm(sb *Sandbox) func(context.Context, string) bool {
 		select {
 		case l, ok := <-c.input:
 			if !ok {
-				return false
+				return Deny
 			}
 			line = l
 		case <-ctx.Done():
 			fmt.Fprintln(c.err)
-			return false
+			return Deny
 		}
 		switch strings.ToLower(strings.TrimSpace(line)) {
 		case "y", "yes":
-			return true
+			return AllowOnce
 		case "a", "always":
-			sb.Always("exec")
-			return true
+			return AllowAlways
 		}
-		return false
+		return Deny
 	}
 }
 
@@ -3073,8 +3229,11 @@ func run(args []string) error {
 		return err
 	}
 	defer sb.fs.Close()
+	if err := requireFence(cfg, sb.Fence); err != nil {
+		return err
+	}
 	if interactive {
-		sb.Confirm = console.Confirm(sb)
+		sb.Confirm = console.Confirm()
 	}
 	tb := newToolbox(sb)
 	var agent *Agent
@@ -3099,8 +3258,8 @@ func run(args []string) error {
 
 	console.Note("root=%s model=%s:%s think=%s sandbox=%s fence=%s context=%d%s session=%s skills=%d",
 		cfg.Root, cfg.Provider.Name, cfg.Model, cfg.Think, cfg.Mode, sb.Fence, cfg.Context, contextNote, session.id, len(skills))
-	if cfg.NoNet && sb.Fence.Kind == "none" {
-		console.Note("-no-net ignored: no fence on this machine")
+	if cfg.Unfenced && sb.Fence.Kind == "none" && (cfg.NoNet || cfg.Mode == ModeReadOnly) {
+		console.Note("unfenced: exec is gated by the policy alone; no-net and read-only are not enforced for it")
 	}
 	if len(history) > 0 {
 		console.Note("resumed %d messages", len(history))
@@ -3195,6 +3354,28 @@ func run(args []string) error {
 			turn(line)
 		}
 	}
+}
+
+// requireFence fails closed: -no-net and -sandbox read-only ask the OS to
+// enforce a boundary on exec, and on a machine with no fence that promise
+// cannot be kept. The person can accept the weaker contract with
+// -unfenced; the program never decides that for them.
+func requireFence(cfg *Config, f Fence) error {
+	if f.Kind != "none" || cfg.Unfenced {
+		return nil
+	}
+	var what string
+	switch {
+	case cfg.NoNet && cfg.Mode == ModeReadOnly:
+		what = "-no-net and -sandbox read-only ask"
+	case cfg.NoNet:
+		what = "-no-net asks"
+	case cfg.Mode == ModeReadOnly:
+		what = "-sandbox read-only asks"
+	default:
+		return nil
+	}
+	return fmt.Errorf("%s the OS to fence exec and this machine has no fence (bwrap on Linux, sandbox-exec on macOS); install one, or pass -unfenced to run with the policy gate alone", what)
 }
 
 // lastReceipt reports the files the whole run wrote, for the JSON result.

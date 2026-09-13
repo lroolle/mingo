@@ -61,6 +61,9 @@ func TestAutoRunAllowlist(t *testing.T) {
 		"go vet ./... 2>&1", "go build ./... 2>/dev/null", "git branch --show-current", "git branch -a",
 		"git tag", "git remote -v", "hostname -f", "date -u", "rg -n foo", "find . -type f -newer x",
 		"cat a.go\ncat b.go", "grep -o pattern file", "sort -r file", "tree -L 2",
+		// quoting is understood, not feared
+		"grep 'foo|bar' a.go", `grep -E "a b" x`, "find . -name '*.go' -newer x", "grep 'end$' f", `echo "it's"`,
+		"uniq input", "date '+%Y'", "sort -k2 -n file", "grep -e '-delete' log",
 	}
 	no := []string{
 		"", "rm -rf x", "cat a > b", "git commit -m x", "go test ./...", "ls $(echo x)", "echo `id`",
@@ -74,6 +77,10 @@ func TestAutoRunAllowlist(t *testing.T) {
 		"git tag v1", "git tag -d v1", "git remote add x url", "hostname evil", "date -s now",
 		"tree -o out.txt", "rg --pre evil x", "fd -x rm", "git log --output=f",
 		"ls >&2 && touch x", "cat a 2>&1 > b", "(cd x && rm y)", "ls | cat > out",
+		// the second review's holes: quoting, attached values, positional output files
+		"find . -name victim '-delete'", `find . -name victim "-delete"`, "find . -name victim -del\\ete",
+		"sort -oout input", "sort -ro out input", "uniq input output", "go build -ox .",
+		"X=-delete find . $X", "find . ${F}", "find . -dele*", "date 0913120026", "grep 'unterminated",
 	}
 	for _, c := range yes {
 		if !autoRun(c) {
@@ -127,19 +134,24 @@ func TestExecPolicy(t *testing.T) {
 		t.Fatalf("headless Ask must deny, got %v", err)
 	}
 	asked := 0
-	sb.Confirm = func(context.Context, string) bool { asked++; return asked > 1 }
+	sb.Confirm = func(context.Context, string) Decision {
+		asked++
+		return [...]Decision{Deny, AllowOnce, AllowAlways}[asked-1]
+	}
 	if err := sb.Exec(ctx, "rm x"); err == nil {
 		t.Fatal("declined must refuse")
 	}
 	if err := sb.Exec(ctx, "rm x"); err != nil {
 		t.Fatal("approved must run")
 	}
-	sb.Always("exec")
-	if err := sb.Exec(ctx, "rm y"); err != nil || asked != 2 {
+	if err := sb.Exec(ctx, "rm x"); err != nil {
+		t.Fatal("always must run")
+	}
+	if err := sb.Exec(ctx, "rm y"); err != nil || asked != 3 {
 		t.Fatalf("always must skip the prompt: err=%v asked=%d", err, asked)
 	}
 	sb.Mode = ModeFull
-	sb.Confirm = func(context.Context, string) bool { t.Fatal("full mode never asks"); return false }
+	sb.Confirm = func(context.Context, string) Decision { t.Fatal("full mode never asks"); return Deny }
 	must(t, sb.Exec(ctx, "rm z"))
 	child := sb.child(true)
 	if child.Mode != ModeReadOnly {
@@ -150,8 +162,9 @@ func TestExecPolicy(t *testing.T) {
 	}
 	// the child's prompts are labelled and its "always" is its own
 	sb.Mode = ModeWorkspace
+	sb.always = map[string]bool{}
 	var seen string
-	sb.Confirm = func(_ context.Context, a string) bool { seen = a; return true }
+	sb.Confirm = func(_ context.Context, a string) Decision { seen = a; return AllowOnce }
 	c := sb.child(false)
 	must(t, c.Exec(ctx, "rm q"))
 	if !strings.HasPrefix(seen, "[sub-agent] ") {
@@ -160,6 +173,24 @@ func TestExecPolicy(t *testing.T) {
 	sb.Always("exec")
 	if c.always["exec"] {
 		t.Fatal("always must not leak into the child")
+	}
+	// and the review's inverse: "always" answered at a child prompt stays
+	// with the child; the parent asks again for its next command
+	sb.always = map[string]bool{}
+	prompts := 0
+	sb.Confirm = func(context.Context, string) Decision { prompts++; return AllowAlways }
+	c = sb.child(false)
+	must(t, c.Exec(ctx, "rm a"))
+	must(t, c.Exec(ctx, "rm b"))
+	if prompts != 1 || !c.always["exec"] {
+		t.Fatalf("child always: prompts=%d child=%v", prompts, c.always)
+	}
+	if sb.always["exec"] {
+		t.Fatal("a child's always widened the parent's authority")
+	}
+	must(t, sb.Exec(ctx, "rm c"))
+	if prompts != 2 {
+		t.Fatalf("parent must ask for itself: prompts=%d", prompts)
 	}
 }
 

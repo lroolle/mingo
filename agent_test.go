@@ -378,6 +378,54 @@ func TestCancelClosesTheBatch(t *testing.T) {
 	}
 }
 
+// A cancellation the loop can already see is a reason not to start: the
+// context is cancelled from the UI's ToolCall hook, right before dispatch,
+// and the tool body must not run.
+func TestCancelObservedBeforeDispatchSkipsTheTool(t *testing.T) {
+	fp := &fakeProvider{t: t, replies: []string{
+		toolReply("c1", "write", `{"path":"marker","content":"ran"}`),
+		textReply("never"),
+	}}
+	a, root := newTestAgent(t, fp, ModeFull)
+	ctx, cancel := context.WithCancel(context.Background())
+	a.ui = &cancellingUI{quietUI: &quietUI{}, cancel: cancel}
+	_, err := a.Turn(ctx, "x")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want cancel, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "marker")); err == nil {
+		t.Fatal("tool ran after cancellation was observable")
+	}
+	assertClosedBatches(t, a.msgs)
+	if !strings.Contains(a.msgs[2].Content, "not executed") {
+		t.Fatalf("call must be closed unexecuted: %q", a.msgs[2].Content)
+	}
+}
+
+// A batch with duplicate ids, a missing id or a missing name is rejected
+// whole, before anything runs.
+func TestMalformedBatchIsRejectedBeforeDispatch(t *testing.T) {
+	dup := sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"same","function":{"name":"write","arguments":"{\"path\":\"a\",\"content\":\"1\"}"}},{"index":1,"id":"same","function":{"name":"write","arguments":"{\"path\":\"b\",\"content\":\"2\"}"}}]},"finish_reason":"tool_calls"}]}`)
+	noid := sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"write","arguments":"{\"path\":\"c\",\"content\":\"3\"}"}}]},"finish_reason":"tool_calls"}]}`)
+	noname := sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"x","function":{"arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`)
+	for name, reply := range map[string]string{"duplicate id": dup, "no id": noid, "no name": noname} {
+		t.Run(name, func(t *testing.T) {
+			fp := &fakeProvider{t: t, replies: []string{reply}}
+			a, root := newTestAgent(t, fp, ModeFull)
+			_, err := a.Turn(context.Background(), "x")
+			if err == nil || !strings.Contains(err.Error(), "malformed tool batch") {
+				t.Fatalf("want a batch error, got %v", err)
+			}
+			entries, _ := os.ReadDir(root)
+			for _, e := range entries {
+				if e.Name() != runtimeDir {
+					t.Fatalf("a tool ran from a malformed batch: %s", e.Name())
+				}
+			}
+		})
+	}
+}
+
 func TestSubAgentIsBoundedAndReports(t *testing.T) {
 	fp := &fakeProvider{t: t, replies: []string{
 		toolReply("c1", "agent", `{"task":"look around","readonly":true}`),

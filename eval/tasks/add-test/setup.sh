@@ -14,3 +14,5 @@ func Reverse(s string) string {
 	return string(r)
 }
 GO
+# the checker compares against this; it lives beside the root, outside it
+sha256sum strutil.go | cut -c1-64 > "$1.strutil.sha256"

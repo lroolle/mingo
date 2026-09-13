@@ -1,1 +1,1 @@
--sandbox read-only
+-sandbox read-only -unfenced
