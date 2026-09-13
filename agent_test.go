@@ -82,7 +82,7 @@ func TestTurnHeadlessDeniesAndReportsToModel(t *testing.T) {
 	a, _ := newTestAgent(t, fp, ModeWorkspace)
 	_, err := a.Turn(context.Background(), "clean")
 	must(t, err)
-	if !strings.Contains(a.msgs[2].Content, "error: command needs confirmation") {
+	if !strings.Contains(a.msgs[2].Content, "error: this command needs a person's consent") {
 		t.Fatalf("model must be told why: %q", a.msgs[2].Content)
 	}
 }
