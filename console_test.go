@@ -35,7 +35,7 @@ func TestConsoleSplitsAnswerFromChatter(t *testing.T) {
 	if out.String() != "hello world\n" {
 		t.Fatalf("stdout: %q", out.String())
 	}
-	for _, want := range []string{"thinking", "> exec: ls", "3 lines, 12 bytes [exit 0]", "error: nope", "mote: note 1"} {
+	for _, want := range []string{"thinking", "> exec: ls", "3 lines, 12 bytes [exit 0]", "error: nope", "min: note 1"} {
 		if !strings.Contains(errb.String(), want) {
 			t.Fatalf("stderr lacks %q:\n%s", want, errb.String())
 		}
@@ -61,7 +61,7 @@ func TestConsoleSubIndentsAndStaysOffStdout(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("a sub-agent must not write to stdout: %q", out.String())
 	}
-	if !strings.Contains(errb.String(), "  | child says\n  | more\n") || !strings.Contains(errb.String(), "  | mote: n") {
+	if !strings.Contains(errb.String(), "  | child says\n  | more\n") || !strings.Contains(errb.String(), "  | min: n") {
 		t.Fatalf("sub output: %q", errb.String())
 	}
 }

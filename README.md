@@ -1,6 +1,6 @@
-# mote
+# min
 
-A small agent runtime in one Go file. A mote is the smallest thing that
+A small agent runtime in one Go file. A min is the smallest thing that
 still does work on its own: this one is a tool loop over any
 OpenAI-compatible endpoint, a sandbox that says exactly what it enforces,
 and a session log that survives interruption. It is built so that a 4B
@@ -8,20 +8,20 @@ model on a laptop CPU can deliver, not demo: the harness checks what the
 model claims, refuses what it cannot verify, closes every loop the model
 leaves open, and keeps the transcript small.
 
-    go build -o mote . && DEEPSEEK_API_KEY=... ./mote
+    go build -o min . && DEEPSEEK_API_KEY=... ./min
 
 ```
-mote: root=/work/app model=deepseek:deepseek-v4-flash think=high sandbox=workspace fence=bwrap context=128000 session=20260913-081502-9c1a2f skills=1
+min: root=/work/app model=deepseek:deepseek-v4-flash think=high sandbox=workspace fence=bwrap context=128000 session=20260913-081502-9c1a2f skills=1
 > Add has a bug. Fix it, verify, and tell me in two sentences.
 > exec: ls -la && find . -type f -name '*.go' | head -50
 > read: add.go
 > edit: add.go
 > exec: go vet ./... && go test ./...
 Fixed: Add returned a - b; it now returns a + b. Verified with go vet (clean) and go test (pass).
-mote: wrote add.go
+min: wrote add.go
 ```
 
-Standard library only, POSIX, one core file (`mote.go`), thick tests
+Standard library only, POSIX, one core file (`min.go`), thick tests
 around it. Talks to a llama-server on your own machine, DeepSeek, or OpenAI.
 
 ## What is in the file
@@ -29,8 +29,8 @@ around it. Talks to a llama-server on your own machine, DeepSeek, or OpenAI.
 | Piece | What it is |
 | --- | --- |
 | system prompt | short rules, the soul, the project's `AGENTS.md`, environment, skills catalog. A stable prefix, so a local server serves most of it from cache. `-show-prompt` prints it |
-| SOUL | voice and working values in markdown, layered: built-in default, then `~/.mote/SOUL.md`, then `./.mote/SOUL.md`. Later layers extend, never erase |
-| skills | markdown with `name` and `description` front matter under `.mote/skills/<name>/SKILL.md`, `.mote/skills/<name>.md`, or `~/.mote/skills/`. The catalog sits in the prompt; the body loads through the `skill` tool when a task matches |
+| SOUL | voice and working values in markdown, layered: built-in default, then `~/.min/SOUL.md`, then `./.min/SOUL.md`. Later layers extend, never erase |
+| skills | markdown with `name` and `description` front matter under `.min/skills/<name>/SKILL.md`, `.min/skills/<name>.md`, or `~/.min/skills/`. The catalog sits in the prompt; the body loads through the `skill` tool when a task matches |
 | read | numbered lines, paged. Reading is what makes a file editable |
 | write | creates files and parents, atomically (temp file and rename). Overwriting needs a prior read of the current content |
 | edit | replaces one unique block, with a trailing-whitespace-tolerant retry. Refuses if the file changed since it was read |
@@ -81,7 +81,7 @@ Three layers, each honest about what it covers:
 
 - **the jail**, for `read`, `write`, `edit` and `cwd`: every open goes
   through `os.Root`, so a path or symlink that leaves the root fails in
-  the kernel, not in a string check. `.mote/` is off limits except
+  the kernel, not in a string check. `.min/` is off limits except
   `skills/`. Credential-shaped files (`.env*`, `*.pem`, `id_*`, `.ssh/`,
   `.aws/`, ...) are refused anywhere;
 - **the policy**, for `exec`: an allowlist of read-only tools (`ls`, `cat`,
@@ -116,7 +116,7 @@ commands for paths is theater and this code does not pretend otherwise.
 
 ## Sessions
 
-Every message is appended to `.mote/sessions/<id>.jsonl` and fsynced as it
+Every message is appended to `.min/sessions/<id>.jsonl` and fsynced as it
 happens, mode 0600, ignored by a `.gitignore` the runtime writes itself. The
 id is a UTC timestamp plus a random suffix, created with `O_EXCL`, so two
 agents in one directory never share a log. The first line is a header; every
@@ -164,7 +164,7 @@ silences reasoning and tool lines on stderr; notes and the receipt stay.
 | thinking | `thinking.type` + `reasoning_effort` | `reasoning_effort` | `chat_template_kwargs.enable_thinking` |
 | reasoning replay | every assistant message carries `reasoning_content` when tools are present, even empty, or the API answers 400 | stripped | stripped |
 
-`MOTE_BASE_URL` overrides the endpoint; https is required except on loopback,
+`MIN_BASE_URL` overrides the endpoint; https is required except on loopback,
 and loopback means `localhost` or a loopback IP literal, not a hostname that
 starts with `127.`. Streaming usage is read from whichever chunk carries it:
 DeepSeek moved it from a usage-only chunk to the last content chunk in
@@ -173,7 +173,7 @@ pinned by recorded streams under `testdata/streams/`.
 
 ## Local model
 
-Any OpenAI-compatible server on loopback works; mote reads the context
+Any OpenAI-compatible server on loopback works; min reads the context
 window from `/props` so compaction fits the model actually loaded. The one
 this was tuned on is [Spark-X2.5-4B](https://huggingface.co/XHToken/Spark-X2.5-4B)
 through the vendor's llama.cpp fork, on a 10-core arm64 CPU with no GPU:
@@ -182,7 +182,7 @@ through the vendor's llama.cpp fork, on a 10-core arm64 CPU with no GPU:
     cmake -B build -DLLAMA_CURL=ON && cmake --build build -j --target llama-server
     ./build/bin/llama-server -hf XHToken/Spark-X2.5-4B-GGUF:Q4_K_M \
       -c 32768 -fa on --jinja --cache-reuse 256 --parallel 1 --reasoning-format deepseek
-    ./mote -provider local
+    ./min -provider local
 
 `make local` runs the same server from a downloaded GGUF and `make eval`
 runs the live tasks under `eval/`. Measured on 2026-09-12 with the previous
@@ -231,8 +231,8 @@ what actually changed.
 Slash commands: `/new /compact /cost /skills /soul /sandbox [mode] /quit`.
 Ctrl-C cancels the running turn.
 
-`go install github.com/lroolle/mote.go@latest` works but names the binary
-`mote.go`; `go build -o mote .` or a release binary is nicer.
+`go install github.com/lroolle/min.go@latest` works but names the binary
+`min.go`; `go build -o min .` or a release binary is nicer.
 
 ## Verify
 
@@ -255,7 +255,7 @@ and the JSON result end to end.
 What it cannot prove is a live wire. The five tasks under `eval/` were run
 against DeepSeek on 2026-09-13; see `eval/README.md` for what each proves.
 
-## Layout of mote.go
+## Layout of min.go
 
 ```
 config     flags, env, providers, outcomes

@@ -1,8 +1,8 @@
-// mote: a small agent runtime in one Go file.
+// min: a small agent runtime in one Go file.
 //
-// A mote is the smallest thing that still does work on its own. This one is
-// a tool loop over any OpenAI-compatible chat endpoint (a llama-server on
-// this machine, DeepSeek, OpenAI), a sandbox that says exactly what it
+// Minimize machinery, not capability. min is a tool loop over any
+// OpenAI-compatible endpoint (a llama-server on this machine, DeepSeek,
+// OpenRouter, OpenAI's Responses API), a sandbox that says exactly what it
 // enforces, and a session log that survives interruption. It is built so
 // that a 4B model on a laptop CPU can deliver: the harness checks what the
 // model claims, refuses what it cannot verify, closes every loop the model
@@ -62,8 +62,8 @@ const (
 	version = "0.2.0"
 	// runtimeDir is the per-project state directory. Its contents are off
 	// limits to every tool except the skills subtree, which is meant to be read.
-	runtimeDir = ".mote"
-	envPrefix  = "MOTE_"
+	runtimeDir = ".min"
+	envPrefix  = "MIN_"
 )
 
 // A turn ends in one of a few outcomes besides success. They are sentinel
@@ -161,7 +161,7 @@ type Config struct {
 	MaxTokens  int
 	Context    int    // model context window in tokens, drives compaction; 0 = provider default
 	Root       string // sandbox root, absolute, symlinks resolved
-	Home       string // ~/.mote
+	Home       string // ~/.min
 	Mode       Mode
 	NoNet      bool
 	Prompt     string // headless prompt; empty means interactive
@@ -178,7 +178,7 @@ type Config struct {
 }
 
 func parseConfig(args []string) (*Config, error) {
-	fs := flag.NewFlagSet("mote", flag.ContinueOnError)
+	fs := flag.NewFlagSet("min", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	cfg := &Config{}
 	var providerName, modeName, root string
@@ -204,8 +204,8 @@ func parseConfig(args []string) (*Config, error) {
 	fs.BoolVar(&cfg.Sessions, "sessions", false, "list sessions and exit")
 	fs.BoolVar(&cfg.Version, "version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "mote %s: a small agent runtime in one Go file\n\n", version)
-		fmt.Fprintf(os.Stderr, "usage: mote [flags] [-p \"prompt\"]\n\n")
+		fmt.Fprintf(os.Stderr, "min %s: a small agent runtime in one Go file\n\n", version)
+		fmt.Fprintf(os.Stderr, "usage: min [flags] [-p \"prompt\"]\n\n")
 		fs.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nenv: DEEPSEEK_API_KEY or OPENAI_API_KEY, %sBASE_URL, %sMODEL, %sPROVIDER, %sTHINK, %sSANDBOX, %sHOME\n",
 			envPrefix, envPrefix, envPrefix, envPrefix, envPrefix, envPrefix)
@@ -790,7 +790,7 @@ func readSoul(home, root string) string {
 // server serve most of it from its prompt cache.
 func buildSystemPrompt(cfg *Config, soul string, skills []Skill, sub bool) string {
 	var b strings.Builder
-	b.WriteString("You are mote, an agent that works inside one directory with a small set of tools. ")
+	b.WriteString("You are min, an agent that works inside one directory with a small set of tools. ")
 	if sub {
 		b.WriteString("You are a sub-agent: finish the one task you were given and report back in plain text; nobody else sees your intermediate steps.\n\n")
 	} else {
@@ -920,7 +920,7 @@ func (s *Sandbox) Resolve(p string) (string, error) {
 	rel, _ := filepath.Rel(s.Root, real)
 	if rel == runtimeDir || strings.HasPrefix(rel, runtimeDir+string(filepath.Separator)) {
 		if !strings.HasPrefix(rel, filepath.Join(runtimeDir, "skills")) {
-			return "", fmt.Errorf("%s is mote's own state and off limits", p)
+			return "", fmt.Errorf("%s is min's own state and off limits", p)
 		}
 	}
 	if secretRe.MatchString(filepath.ToSlash(real)) {
@@ -1117,7 +1117,7 @@ func scrubEnv(env []string) []string {
 		}
 		out = append(out, kv)
 	}
-	return append(out, "MOTE=1")
+	return append(out, "MIN=1")
 }
 
 // --- the fence
@@ -1609,7 +1609,7 @@ func (tb *Toolbox) writeAtomic(rel string, data []byte) error {
 	if info, err := tb.sb.fs.Stat(rel); err == nil {
 		mode = info.Mode().Perm()
 	}
-	tmp := rel + ".mote-tmp"
+	tmp := rel + ".min-tmp"
 	f, err := tb.sb.fs.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
@@ -2293,7 +2293,7 @@ func agentTool(parent func() *Agent) *Tool {
 }
 
 // ---------------------------------------------------------------------------
-// session: one JSONL file per session under .mote/sessions
+// session: one JSONL file per session under .min/sessions
 // ---------------------------------------------------------------------------
 
 // Session appends every message as it happens and fsyncs each one, so a
@@ -2329,7 +2329,7 @@ func openSession(cfg *Config, resume string) (*Session, []Message, error) {
 	if _, err := os.Stat(ignore); errors.Is(err, os.ErrNotExist) {
 		_ = os.WriteFile(ignore, []byte("sessions/\n"), 0o644)
 	}
-	meta := map[string]any{"mote": version, "cwd": cfg.Root, "model": cfg.Model}
+	meta := map[string]any{"min": version, "cwd": cfg.Root, "model": cfg.Model}
 	if resume == "" {
 		s, err := newSession(dir, meta)
 		return s, nil, err
@@ -2776,7 +2776,7 @@ func (c *Console) Note(format string, a ...any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.endLine()
-	fmt.Fprintf(c.err, "%s%s\n", c.prefix, c.paint(cPink, "mote: "+fmt.Sprintf(format, a...)))
+	fmt.Fprintf(c.err, "%s%s\n", c.prefix, c.paint(cPink, "min: "+fmt.Sprintf(format, a...)))
 }
 
 // Sub returns the UI a sub-agent streams into: same console, indented, quiet.
@@ -2836,7 +2836,7 @@ func readLines(r io.Reader) chan string {
 func main() {
 	err := run(os.Args[1:])
 	if err != nil && !errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintln(os.Stderr, "mote:", err)
+		fmt.Fprintln(os.Stderr, "min:", err)
 	}
 	os.Exit(exitCode(err))
 }
@@ -2880,7 +2880,7 @@ func run(args []string) error {
 		return err
 	}
 	if cfg.Version {
-		fmt.Println("mote", version)
+		fmt.Println("min", version)
 		return nil
 	}
 	if cfg.Sessions {

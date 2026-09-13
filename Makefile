@@ -1,7 +1,7 @@
 .PHONY: build test race vet bench prompt local eval
 
 build:
-	go build -o mote .
+	go build -o min .
 
 test:
 	go test ./...
@@ -19,11 +19,11 @@ bench:
 	go test -run '^$$' -bench . -benchmem ./...
 
 prompt: build
-	./mote -show-prompt | wc -c
+	./min -show-prompt | wc -c
 
 # A local backend: llama-server serving a GGUF on loopback. The flags are
 # the ones measured on a 10-core arm64 CPU with Spark-X2.5-4B; any
-# OpenAI-compatible server works, mote reads the context size from /props.
+# OpenAI-compatible server works, min reads the context size from /props.
 MODEL ?= $(HOME)/models/Spark-X2.5-4B-Q4_K_M.gguf
 local:
 	llama-server -m $(MODEL) --host 127.0.0.1 --port 8080 -c 32768 -fa on --jinja \

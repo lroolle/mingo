@@ -230,7 +230,7 @@ func TestSessionHeaderAndListing(t *testing.T) {
 	must(t, s.Append(Message{Role: "assistant", Content: "answer"}))
 	b, _ := os.ReadFile(s.path)
 	head := string(bytes.SplitN(b, []byte("\n"), 2)[0])
-	for _, want := range []string{`"mote":"` + version + `"`, `"id":"` + s.id + `"`, `"model":"m"`, `"created":`} {
+	for _, want := range []string{`"min":"` + version + `"`, `"id":"` + s.id + `"`, `"model":"m"`, `"created":`} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("header lacks %s: %s", want, head)
 		}

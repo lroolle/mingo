@@ -94,7 +94,7 @@ func TestReadWriteEditRules(t *testing.T) {
 	if info, err := os.Stat(filepath.Join(root, "b.txt")); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode not preserved: %v %v", info.Mode(), err)
 	}
-	if m, _ := filepath.Glob(filepath.Join(root, "*.mote-tmp")); len(m) != 0 {
+	if m, _ := filepath.Glob(filepath.Join(root, "*.min-tmp")); len(m) != 0 {
 		t.Fatalf("temp files left behind: %v", m)
 	}
 	tb.sb.Mode = ModeReadOnly

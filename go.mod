@@ -1,3 +1,3 @@
-module github.com/lroolle/mote.go
+module github.com/lroolle/min.go
 
 go 1.26
