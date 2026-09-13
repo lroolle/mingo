@@ -229,7 +229,28 @@ through the vendor's llama.cpp fork, on a 10-core arm64 CPU with no GPU:
 `make local` runs the same server from a downloaded GGUF and `make eval`
 runs the live tasks under `eval/`.
 
-LOCAL_EVAL_TABLE
+Measured on 2026-09-13 with this release, one run per task, 4-bit quant,
+`-think high`, on that CPU, judged by the graders under `eval/` (they call
+the code, mutate it, and diff the tree; the model's prose is not consulted):
+
+| task | passed | wall | requests | prompt tokens (cached) | completion |
+| --- | --- | --- | --- | --- | --- |
+| fix-add | yes | 58 s | 5 | 6,395 (87%) | 270 |
+| add-test | yes | 100 s | 5 | 6,736 (84%) | 462 |
+| report-only | yes | 56 s | 3 | 3,559 (79%) | 247 |
+| rename-symbol | yes | 741 s | 10 | 20,589 (90%) | 3,916 |
+| resume | yes | 279 s | 6 | 9,610 (93%) | 1,166 |
+
+5 of 5. The 12-minute rename is the model thinking through a two-file
+change at 6 tokens per second, in ten rounds; the prompt cache carried 90
+percent of the prompt tokens, so the harness's cost was the model's
+output, not the transcript. Earlier that day, before the completion cap
+and before the consent refusal was rewritten for a small model, the same
+model spent 13 minutes inside one task trying spellings of `go test`
+that would never be allowed unattended, and 45 minutes inside one reply.
+Keep thinking on for a 4B model: with it off, the previous release's
+measurement had the model write "changed the return to a + b" without
+ever calling edit in 4 of 6 runs; the receipt line catches that.
 
 What the harness does for a small model, beyond the guarantees above: the
 system prompt and tool schemas are a stable prefix, so the server reprocesses
