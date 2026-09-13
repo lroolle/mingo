@@ -1,0 +1,178 @@
+: 
+
+: 
+
+data: {"type":"response.created","response":{"id":"gen-1789308348-tZ7SUonl5ly3iiYiQMSy","object":"response","created_at":1789308348,"model":"openai/gpt-5-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"read","description":"Read a file.","strict":false,"parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":400,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"You are a terse assistant with tools.","text":{"format":{"type":"text"}},"reasoning":{"effort":"low","summary":"auto"},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1789308348-tZ7SUonl5ly3iiYiQMSy","object":"response","created_at":1789308348,"model":"openai/gpt-5-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"read","description":"Read a file.","strict":false,"parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":400,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"You are a terse assistant with tools.","text":{"format":{"type":"text"}},"reasoning":{"effort":"low","summary":"auto"},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","type":"reasoning","status":"in_progress","summary":[]},"sequence_number":2}
+
+data: {"type":"response.reasoning_summary_part.added","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"part":{"type":"summary_text","text":""},"sequence_number":3}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"**Using the read function**\n\nI","sequence_number":4}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" need","sequence_number":5}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" to","sequence_number":6}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" read","sequence_number":7}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" from","sequence_number":8}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" '","sequence_number":9}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"notes","sequence_number":10}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".txt","sequence_number":11}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"'","sequence_number":12}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" using","sequence_number":13}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" the","sequence_number":14}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" functions","sequence_number":15}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".read","sequence_number":16}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" tool","sequence_number":17}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".","sequence_number":18}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" I","sequence_number":19}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" could","sequence_number":20}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" consider","sequence_number":21}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" whether","sequence_number":22}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" to","sequence_number":23}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" use","sequence_number":24}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" multi","sequence_number":25}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"_tool","sequence_number":26}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"_use","sequence_number":27}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".parallel","sequence_number":28}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":",","sequence_number":29}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" but","sequence_number":30}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" since","sequence_number":31}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" it's","sequence_number":32}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" only","sequence_number":33}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" one","sequence_number":34}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" tool","sequence_number":35}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":",","sequence_number":36}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" I","sequence_number":37}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" think","sequence_number":38}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" I","sequence_number":39}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" can","sequence_number":40}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" call","sequence_number":41}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" functions","sequence_number":42}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".read","sequence_number":43}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" directly","sequence_number":44}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".","sequence_number":45}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" I","sequence_number":46}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"’m","sequence_number":47}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" keeping","sequence_number":48}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" it","sequence_number":49}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" simple","sequence_number":50}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" by","sequence_number":51}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" just","sequence_number":52}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" focusing","sequence_number":53}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" on","sequence_number":54}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" using","sequence_number":55}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" functions","sequence_number":56}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".read","sequence_number":57}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" to","sequence_number":58}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" access","sequence_number":59}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" the","sequence_number":60}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" notes","sequence_number":61}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":".","sequence_number":62}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" I'll","sequence_number":63}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" make","sequence_number":64}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" sure","sequence_number":65}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" to","sequence_number":66}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" proceed","sequence_number":67}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" with","sequence_number":68}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" that","sequence_number":69}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" straightforward","sequence_number":70}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":" approach","sequence_number":71}
+
+data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"delta":"!","sequence_number":72}
+
+data: {"type":"response.reasoning_summary_text.done","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"text":"**Using the read function**\n\nI need to read from 'notes.txt' using the functions.read tool. I could consider whether to use multi_tool_use.parallel, but since it's only one tool, I think I can call functions.read directly. I’m keeping it simple by just focusing on using functions.read to access the notes. I'll make sure to proceed with that straightforward approach!","sequence_number":73}
+
+data: {"type":"response.reasoning_summary_part.done","output_index":0,"item_id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","summary_index":0,"part":{"type":"summary_text","text":"**Using the read function**\n\nI need to read from 'notes.txt' using the functions.read tool. I could consider whether to use multi_tool_use.parallel, but since it's only one tool, I think I can call functions.read directly. I’m keeping it simple by just focusing on using functions.read to access the notes. I'll make sure to proceed with that straightforward approach!"},"sequence_number":74}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"**Using the read function**\n\nI need to read from 'notes.txt' using the functions.read tool. I could consider whether to use multi_tool_use.parallel, but since it's only one tool, I think I can call functions.read directly. I’m keeping it simple by just focusing on using functions.read to access the notes. I'll make sure to proceed with that straightforward approach!"}],"encrypted_content":"gAAAAABqpq2_Wus6S2nTqZ34zlFdQ5uoJljjNPxDGZDTlzz5i8tC9qw6hSIMQmzSkru1YlbWbRsIVXtQ0YRITWPvf4B0Lm53PJ34SS065Sio-bazu3Tu_3MjVyHUBgLgXq6yctScWhPUnNtQvCsFNRfLlj2q5Jl-gmqr-OqxP1c15FvDTH0L8qigfFZHLNvAhjQpj6-hL3nHXfkRTEK8RwzUFZl1qlJMd3waaGuvkLZLfpJMfsy3OGCn0I9NkMxVBga9lg-Hc099mTNj9QvYYNJu9iy2hmYLNbgd3JecAAInGTuoNmdXc4EieVlXuVWGBTO0Y6LF9HT5-UMrnWPyZ4P-RAASEFdAUjG4zAkospHqlelabFrzKZR0Q2eR0iGONqOCmdHzunPSbJboZY9UrrlKNOXtXWKuiTNEXFcnjV9ZAbOmUYSxWayLrDnh9R7lQ6OJQoghxuzgGVih8KL9X8Et0sdbEkzd6L5-ZSR_O3dAhg41WTUpZq2nT7xG3HJBPTfSIhTRtcwh7fW4NKEzjHhLMuHdoYp6K4PVkaiAooL1tmK3CBde0xVT75Ek0Atip8aQ7K_Pl05ml6Sitg8jn7Dip-pW6WxYrkKceN4L1khnXWjxD8qr2GB_gDnFsYhnfHUoVrIjWTRlearakHm5SFObJswj10qvWsUOc2Hc4ijfFvjHTKZbbdUsVxYF122vpoXCzRjyW5heR89RZvOiUG53XHBwpzoRfKI-9SQeDPxZ1jgzC1577FSoiX2ioznyy30jszIH8ZvMGjF9RPXjeAgRYAP5-oMr8lO5sDUdgpX5lRPhSnER6_pJCF09Lisv1zM4WSTWGREU20c3P9GdOJohIfOzBYzk13aVp8tVxqdoTaoiAPC9_C0ByD4dI2_xIUFKgCzJWIZoJGxAyVD0LW8h5SmHgURfI_mNCXvJA5G9YiH2dhxFbi8VdDYWZVX4ZCSrNEy62pkm9FV86yk40SxwIFWCHyPN_7q_1MEeS6yUf4ure_csAImNIsGMkek4tDQ8CUKIfUx4VrvnKPcFemq7EjXeq0DFIOrIaiaD-TWxzTeYuWlz2F4T9etxblFoKQAEREI4KXrHa2janUOEI1XPlTg-cVsbMztoeg9K-zKBlkOdcFvtH1Xbvp7YZF5RFSjfrALfaed4hcmqQ4AAR-aI0iA38FQ9mL5DaEX0i8lwSTFDEknAI_vZ8qykub0_YxQUJC2E0T5S0Hye1H1B5Vr0zA_5_RiABFh6xAVpSNbOVqMyOooLG30vzyhUx7pW0KfGO66XII4thWz7_p4KiVlCG3krpEzsFPm5ndn_zVfJGrUlhqBU-C7WiRuufwiVySjVpUvrzxoTF763WRj-2d7RjptoyRvBKnX0eYpORIj5rHuhJiq_oQA3_w5JGu0rCUN5UU3Cel1xaRT81FZulpXIhDBU2WmGDkZyNyBGLxbT8-cQzAYU5vNHwg81IkuU4QkVuQs2fX7jfDKP8hysh8Cpw0U0TzDBYx4wQMLlN3L9qIENrkBQcIf8ipXW9nO5L0y1SDuzWjwjevg_rkqboL3z8_B_PQPZEQtfEnAL2vfqFL_zWcPj4JGjaTfgspsOWupsIRcwMreEx_zabAMfndVftz2layh1iw==.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC01LW1pbmktMjAyNS0wOC0wN3xvcGVuYWkifQ","format":"openai-responses-v1"},"sequence_number":75}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"fc_tmp_qbasdwbu2rl","type":"function_call","status":"in_progress","call_id":"call_aNFvRpXeAa3HgE6KGI0bWW8C","name":"read","arguments":""},"sequence_number":76}
+
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","delta":"{\"","sequence_number":77}
+
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","delta":"path","sequence_number":78}
+
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","delta":"\":\"","sequence_number":79}
+
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","delta":"notes","sequence_number":80}
+
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","delta":".txt","sequence_number":81}
+
+data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","delta":"\"}","sequence_number":82}
+
+data: {"type":"response.function_call_arguments.done","output_index":1,"item_id":"fc_tmp_qbasdwbu2rl","name":"read","arguments":"{\"path\":\"notes.txt\"}","sequence_number":83}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"fc_tmp_qbasdwbu2rl","type":"function_call","status":"completed","call_id":"call_aNFvRpXeAa3HgE6KGI0bWW8C","name":"read","arguments":"{\"path\":\"notes.txt\"}"},"sequence_number":84}
+
+data: {"type":"response.completed","response":{"id":"gen-1789308348-tZ7SUonl5ly3iiYiQMSy","object":"response","created_at":1789308348,"model":"openai/gpt-5-mini","status":"completed","completed_at":1789308351,"output":[{"id":"rs_08f36c03aa1bc1b2016aa6adbe402087d1a6c635d6e07f6f24","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"**Using the read function**\n\nI need to read from 'notes.txt' using the functions.read tool. I could consider whether to use multi_tool_use.parallel, but since it's only one tool, I think I can call functions.read directly. I’m keeping it simple by just focusing on using functions.read to access the notes. I'll make sure to proceed with that straightforward approach!"}],"encrypted_content":"gAAAAABqpq2_Wus6S2nTqZ34zlFdQ5uoJljjNPxDGZDTlzz5i8tC9qw6hSIMQmzSkru1YlbWbRsIVXtQ0YRITWPvf4B0Lm53PJ34SS065Sio-bazu3Tu_3MjVyHUBgLgXq6yctScWhPUnNtQvCsFNRfLlj2q5Jl-gmqr-OqxP1c15FvDTH0L8qigfFZHLNvAhjQpj6-hL3nHXfkRTEK8RwzUFZl1qlJMd3waaGuvkLZLfpJMfsy3OGCn0I9NkMxVBga9lg-Hc099mTNj9QvYYNJu9iy2hmYLNbgd3JecAAInGTuoNmdXc4EieVlXuVWGBTO0Y6LF9HT5-UMrnWPyZ4P-RAASEFdAUjG4zAkospHqlelabFrzKZR0Q2eR0iGONqOCmdHzunPSbJboZY9UrrlKNOXtXWKuiTNEXFcnjV9ZAbOmUYSxWayLrDnh9R7lQ6OJQoghxuzgGVih8KL9X8Et0sdbEkzd6L5-ZSR_O3dAhg41WTUpZq2nT7xG3HJBPTfSIhTRtcwh7fW4NKEzjHhLMuHdoYp6K4PVkaiAooL1tmK3CBde0xVT75Ek0Atip8aQ7K_Pl05ml6Sitg8jn7Dip-pW6WxYrkKceN4L1khnXWjxD8qr2GB_gDnFsYhnfHUoVrIjWTRlearakHm5SFObJswj10qvWsUOc2Hc4ijfFvjHTKZbbdUsVxYF122vpoXCzRjyW5heR89RZvOiUG53XHBwpzoRfKI-9SQeDPxZ1jgzC1577FSoiX2ioznyy30jszIH8ZvMGjF9RPXjeAgRYAP5-oMr8lO5sDUdgpX5lRPhSnER6_pJCF09Lisv1zM4WSTWGREU20c3P9GdOJohIfOzBYzk13aVp8tVxqdoTaoiAPC9_C0ByD4dI2_xIUFKgCzJWIZoJGxAyVD0LW8h5SmHgURfI_mNCXvJA5G9YiH2dhxFbi8VdDYWZVX4ZCSrNEy62pkm9FV86yk40SxwIFWCHyPN_7q_1MEeS6yUf4ure_csAImNIsGMkek4tDQ8CUKIfUx4VrvnKPcFemq7EjXeq0DFIOrIaiaD-TWxzTeYuWlz2F4T9etxblFoKQAEREI4KXrHa2janUOEI1XPlTg-cVsbMztoeg9K-zKBlkOdcFvtH1Xbvp7YZF5RFSjfrALfaed4hcmqQ4AAR-aI0iA38FQ9mL5DaEX0i8lwSTFDEknAI_vZ8qykub0_YxQUJC2E0T5S0Hye1H1B5Vr0zA_5_RiABFh6xAVpSNbOVqMyOooLG30vzyhUx7pW0KfGO66XII4thWz7_p4KiVlCG3krpEzsFPm5ndn_zVfJGrUlhqBU-C7WiRuufwiVySjVpUvrzxoTF763WRj-2d7RjptoyRvBKnX0eYpORIj5rHuhJiq_oQA3_w5JGu0rCUN5UU3Cel1xaRT81FZulpXIhDBU2WmGDkZyNyBGLxbT8-cQzAYU5vNHwg81IkuU4QkVuQs2fX7jfDKP8hysh8Cpw0U0TzDBYx4wQMLlN3L9qIENrkBQcIf8ipXW9nO5L0y1SDuzWjwjevg_rkqboL3z8_B_PQPZEQtfEnAL2vfqFL_zWcPj4JGjaTfgspsOWupsIRcwMreEx_zabAMfndVftz2layh1iw==.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC01LW1pbmktMjAyNS0wOC0wN3xvcGVuYWkifQ","format":"openai-responses-v1"},{"id":"fc_tmp_qbasdwbu2rl","type":"function_call","status":"completed","call_id":"call_aNFvRpXeAa3HgE6KGI0bWW8C","name":"read","arguments":"{\"path\":\"notes.txt\"}"}],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"read","description":"Read a file.","strict":false,"parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":400,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"default","truncation":"disabled","store":false,"instructions":"You are a terse assistant with tools.","text":{"format":{"type":"text"}},"reasoning":{"effort":"low","summary":"detailed","context":"current_turn","mode":"standard"},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":{"input_tokens":64,"input_tokens_details":{"cached_tokens":0},"output_tokens":64,"output_tokens_details":{"reasoning_tokens":94},"total_tokens":128,"cost":0.00014256,"is_byok":false,"cost_details":{"upstream_inference_cost":0.000144,"upstream_inference_input_cost":0.000016,"upstream_inference_output_cost":0.000128}}},"sequence_number":85}
+
+data: [DONE]
+

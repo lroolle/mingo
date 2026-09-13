@@ -139,6 +139,27 @@ func TestParseConfig(t *testing.T) {
 	if _, err := parseConfig([]string{"-think", "wild"}); err == nil {
 		t.Fatal("bad think level must fail")
 	}
+	// a local server has no completion cap of its own; min gives it one,
+	// and -max-tokens overrides it
+	lc, err := parseConfig([]string{"-provider", "local", "-cwd", t.TempDir()})
+	must(t, err)
+	if lc.MaxTokens != 4096 || lc.Provider.Dialect != "" {
+		t.Fatalf("local defaults: %+v", lc)
+	}
+	lc, err = parseConfig([]string{"-provider", "local", "-cwd", t.TempDir(), "-max-tokens", "100"})
+	must(t, err)
+	if lc.MaxTokens != 100 {
+		t.Fatalf("max-tokens override: %d", lc.MaxTokens)
+	}
+	if cfg.MaxTokens != 0 {
+		t.Fatalf("cloud providers keep their own cap: %d", cfg.MaxTokens)
+	}
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	orc, err := parseConfig([]string{"-provider", "openrouter", "-cwd", t.TempDir()})
+	must(t, err)
+	if orc.Model != "deepseek/deepseek-v4-flash" || orc.Provider.Headers["X-Title"] != "min" {
+		t.Fatalf("openrouter defaults: %+v", orc)
+	}
 	// explicit boundaries fail closed without a fence, -unfenced accepts
 	none := Fence{Kind: "none"}
 	if err := requireFence(&Config{NoNet: true, Mode: ModeWorkspace}, none); err == nil || !strings.Contains(err.Error(), "-unfenced") {

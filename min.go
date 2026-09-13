@@ -75,23 +75,33 @@ var (
 	errMalformed = errors.New("malformed tool batch") // the reply cannot be acted on and is not retried
 )
 
-// Provider describes one OpenAI-compatible chat endpoint and the two places
-// where the dialects differ: how thinking is switched on, and whether the
-// model's reasoning has to be replayed on later requests.
+// Provider describes one endpoint and the places where dialects differ:
+// which wire it speaks, how thinking is switched on, whether the model's
+// reasoning has to be replayed, and what the completion cap is called.
 type Provider struct {
 	Name         string
 	BaseURL      string
 	KeyEnv       string
 	DefaultModel string
 	Context      int // default window when -context is not given; 0 = ask the server
+	// Dialect is "chat" (POST /chat/completions, the shape every server
+	// speaks) or "responses" (OpenAI's /responses: typed items, encrypted
+	// reasoning replayed by the client, typed stream events).
+	Dialect string
 	// ReplayReasoning: DeepSeek requires reasoning_content on every assistant
 	// message of a tool-using conversation, or it answers 400. OpenAI rejects
 	// the field. Verified against api-docs.deepseek.com, thinking-mode guide.
 	ReplayReasoning bool
 	// Think fills the request's provider-specific thinking fields.
 	Think func(req map[string]any, level string)
-	// MaxTokensKey is "max_tokens" or "max_completion_tokens".
+	// MaxTokensKey is "max_tokens", "max_completion_tokens" or "max_output_tokens".
 	MaxTokensKey string
+	// MaxTokens is the completion cap when -max-tokens is 0. Cloud APIs
+	// have their own; a llama-server has none, and a 4B model that starts
+	// thinking in circles would otherwise fill its whole window in one
+	// reply (measured: 15,864 tokens in 45 minutes at 6 tok/s).
+	MaxTokens int
+	Headers   map[string]string // extra request headers
 }
 
 var providers = map[string]*Provider{
@@ -112,22 +122,45 @@ var providers = map[string]*Provider{
 			req["reasoning_effort"] = level // low | high | max
 		},
 	},
+	// openai speaks the Responses API, the wire OpenAI recommends for
+	// agents: reasoning items come back encrypted and are replayed verbatim
+	// (store is off, nothing is kept server-side), function calls are typed
+	// items, and the cache hits more of the prefix. gpt-6-astra: 1,050,000
+	// window, 922,000 max input, effort low|medium|high|xhigh|max, per
+	// developers.openai.com/api/docs/models/gpt-6-astra.
 	"openai": {
 		Name:         "openai",
 		BaseURL:      "https://api.openai.com/v1",
 		KeyEnv:       "OPENAI_API_KEY",
 		DefaultModel: "gpt-6-astra",
-		Context:      128000,
-		MaxTokensKey: "max_completion_tokens",
+		Context:      922000,
+		Dialect:      "responses",
+		MaxTokensKey: "max_output_tokens",
 		Think: func(req map[string]any, level string) {
-			switch level {
-			case "off":
-				// omit: the model's default effort applies
-			case "max":
-				req["reasoning_effort"] = "high"
-			default:
-				req["reasoning_effort"] = level
+			if level == "off" {
+				return // a reasoning model keeps its default effort
 			}
+			req["reasoning"] = map[string]string{"effort": level, "summary": "auto"}
+		},
+	},
+	// openrouter is one key for a few hundred models, chat dialect with
+	// OpenRouter's unified reasoning switch; reasoning streams back in the
+	// delta's "reasoning" field. The default is the cheapest capable
+	// tool-calling model on the list; -model picks any other id.
+	"openrouter": {
+		Name:         "openrouter",
+		BaseURL:      "https://openrouter.ai/api/v1",
+		KeyEnv:       "OPENROUTER_API_KEY",
+		DefaultModel: "deepseek/deepseek-v4-flash",
+		Context:      128000,
+		MaxTokensKey: "max_tokens",
+		Headers:      map[string]string{"HTTP-Referer": "https://github.com/lroolle/min.go", "X-Title": "min"},
+		Think: func(req map[string]any, level string) {
+			if level == "off" {
+				req["reasoning"] = map[string]bool{"enabled": false}
+				return
+			}
+			req["reasoning"] = map[string]string{"effort": level}
 		},
 	},
 	// local is any llama-server (or compatible) on this machine: no key, plain
@@ -143,6 +176,7 @@ var providers = map[string]*Provider{
 		DefaultModel: "local",
 		Context:      0,
 		MaxTokensKey: "max_tokens",
+		MaxTokens:    4096,
 		Think: func(req map[string]any, level string) {
 			if level == "off" {
 				req["chat_template_kwargs"] = map[string]bool{"enable_thinking": false}
@@ -185,10 +219,10 @@ func parseConfig(args []string) (*Config, error) {
 	cfg := &Config{}
 	var providerName, modeName, root string
 	var yolo bool
-	fs.StringVar(&providerName, "provider", envOr(envPrefix+"PROVIDER", "deepseek"), "deepseek | openai | local")
+	fs.StringVar(&providerName, "provider", envOr(envPrefix+"PROVIDER", "deepseek"), "deepseek | openai | openrouter | local")
 	fs.StringVar(&cfg.Model, "model", os.Getenv(envPrefix+"MODEL"), "model id (default per provider)")
 	fs.StringVar(&cfg.Think, "think", envOr(envPrefix+"THINK", "high"), "thinking effort: off | low | high | max")
-	fs.IntVar(&cfg.MaxTokens, "max-tokens", 0, "cap on completion tokens (0 = provider default)")
+	fs.IntVar(&cfg.MaxTokens, "max-tokens", 0, "cap on completion tokens (0 = provider default; local caps at 4096)")
 	fs.IntVar(&cfg.Context, "context", 0, "context window in tokens; compaction triggers near it (0 = provider default, local asks the server)")
 	fs.StringVar(&root, "cwd", ".", "sandbox root and working directory")
 	fs.StringVar(&modeName, "sandbox", envOr(envPrefix+"SANDBOX", "workspace"), "read-only | workspace | full")
@@ -210,7 +244,7 @@ func parseConfig(args []string) (*Config, error) {
 		fmt.Fprintf(os.Stderr, "min %s: a small agent runtime in one Go file\n\n", version)
 		fmt.Fprintf(os.Stderr, "usage: min [flags] [-p \"prompt\"]\n\n")
 		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nenv: DEEPSEEK_API_KEY or OPENAI_API_KEY, %sBASE_URL, %sMODEL, %sPROVIDER, %sTHINK, %sSANDBOX, %sHOME\n",
+		fmt.Fprintf(os.Stderr, "\nenv: DEEPSEEK_API_KEY, OPENAI_API_KEY or OPENROUTER_API_KEY, %sBASE_URL, %sMODEL, %sPROVIDER, %sTHINK, %sSANDBOX, %sHOME\n",
 			envPrefix, envPrefix, envPrefix, envPrefix, envPrefix, envPrefix)
 		fmt.Fprintf(os.Stderr, "exit: 0 done, 1 failed, 2 usage, 3 budget exhausted, 4 reply truncated, 130 cancelled\n")
 	}
@@ -222,7 +256,7 @@ func parseConfig(args []string) (*Config, error) {
 	}
 	p, ok := providers[providerName]
 	if !ok {
-		return nil, fmt.Errorf("unknown provider %q (deepseek | openai | local)", providerName)
+		return nil, fmt.Errorf("unknown provider %q (deepseek | openai | openrouter | local)", providerName)
 	}
 	// Copy so a base URL override never leaks into the table.
 	pc := *p
@@ -240,6 +274,9 @@ func parseConfig(args []string) (*Config, error) {
 	}
 	if cfg.Model == "" {
 		cfg.Model = pc.DefaultModel
+	}
+	if cfg.MaxTokens == 0 {
+		cfg.MaxTokens = pc.MaxTokens
 	}
 	switch cfg.Think {
 	case "off", "low", "high", "max":
@@ -315,6 +352,11 @@ type Message struct {
 	ReasoningContent *string    `json:"reasoning_content,omitempty"`
 	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	// Items is the Responses dialect's own record of an assistant turn: the
+	// output items verbatim, encrypted reasoning included, replayed on the
+	// next request. Content and ToolCalls are derived from them so the
+	// rest of the program never looks inside. Never sent on the chat wire.
+	Items []json.RawMessage `json:"items,omitempty"`
 }
 
 // ToolCall is a function call the model asked for.
@@ -356,6 +398,7 @@ type Reply struct {
 	ToolCalls []ToolCall
 	Finish    string
 	Usage     Usage
+	Items     []json.RawMessage // responses dialect only
 }
 
 // Sink receives streamed fragments as they arrive.
@@ -439,9 +482,13 @@ func isRetryable(err error) bool {
 
 func (c *Client) request(msgs []Message, tools []ToolSpec) map[string]any {
 	p := c.cfg.Provider
+	if p.Dialect == "responses" {
+		return c.responsesRequest(msgs, tools)
+	}
 	wire := make([]Message, len(msgs))
 	for i, m := range msgs {
 		wire[i] = m
+		wire[i].Items = nil
 		if m.Role == "assistant" {
 			if p.ReplayReasoning && len(tools) > 0 {
 				if wire[i].ReasoningContent == nil {
@@ -463,6 +510,61 @@ func (c *Client) request(msgs []Message, tools []ToolSpec) map[string]any {
 		list := make([]map[string]any, len(tools))
 		for i, t := range tools {
 			list[i] = map[string]any{"type": "function", "function": t}
+		}
+		req["tools"] = list
+	}
+	if c.cfg.MaxTokens > 0 {
+		req[p.MaxTokensKey] = c.cfg.MaxTokens
+	}
+	p.Think(req, c.cfg.Think)
+	return req
+}
+
+// responsesRequest maps the transcript onto Responses items: system text
+// becomes instructions, an assistant turn that came from this wire is
+// replayed as its own items (that is what carries the encrypted
+// reasoning), one that did not (a compaction summary, a log from another
+// provider) is rebuilt from content and calls, and tool results become
+// function_call_output items. Nothing is stored server-side.
+func (c *Client) responsesRequest(msgs []Message, tools []ToolSpec) map[string]any {
+	p := c.cfg.Provider
+	var instructions []string
+	input := make([]any, 0, len(msgs))
+	for _, m := range msgs {
+		switch m.Role {
+		case "system":
+			instructions = append(instructions, m.Content)
+		case "user":
+			input = append(input, map[string]any{"role": "user", "content": m.Content})
+		case "assistant":
+			if len(m.Items) > 0 {
+				for _, it := range m.Items {
+					input = append(input, it)
+				}
+				continue
+			}
+			if m.Content != "" {
+				input = append(input, map[string]any{"role": "assistant", "content": m.Content})
+			}
+			for _, tc := range m.ToolCalls {
+				input = append(input, map[string]any{"type": "function_call", "call_id": tc.ID, "name": tc.Function.Name, "arguments": tc.Function.Arguments})
+			}
+		case "tool":
+			input = append(input, map[string]any{"type": "function_call_output", "call_id": m.ToolCallID, "output": m.Content})
+		}
+	}
+	req := map[string]any{
+		"model":        c.cfg.Model,
+		"instructions": strings.Join(instructions, "\n\n"),
+		"input":        input,
+		"stream":       true,
+		"store":        false,
+		"include":      []string{"reasoning.encrypted_content"},
+	}
+	if len(tools) > 0 {
+		list := make([]map[string]any, len(tools))
+		for i, t := range tools {
+			list[i] = map[string]any{"type": "function", "name": t.Name, "description": t.Description, "parameters": t.Parameters, "strict": false}
 		}
 		req["tools"] = list
 	}
@@ -507,7 +609,11 @@ func (c *Client) Complete(ctx context.Context, msgs []Message, tools []ToolSpec,
 }
 
 func (c *Client) once(ctx context.Context, body []byte, sink Sink) (*Reply, error) {
-	url := c.cfg.Provider.BaseURL + "/chat/completions"
+	p := c.cfg.Provider
+	url := p.BaseURL + "/chat/completions"
+	if p.Dialect == "responses" {
+		url = p.BaseURL + "/responses"
+	}
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -517,6 +623,9 @@ func (c *Client) once(ctx context.Context, body []byte, sink Sink) (*Reply, erro
 		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	for k, v := range p.Headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -529,6 +638,9 @@ func (c *Client) once(ctx context.Context, body []byte, sink Sink) (*Reply, erro
 			msg = strings.ReplaceAll(msg, c.cfg.APIKey, "[redacted]")
 		}
 		return nil, &apiError{Status: resp.StatusCode, Message: msg}
+	}
+	if p.Dialect == "responses" {
+		return assembleResponses(resp.Body, sink)
 	}
 	return assemble(resp.Body, sink)
 }
@@ -575,6 +687,7 @@ type chunk struct {
 		Delta struct {
 			Content          string `json:"content"`
 			ReasoningContent string `json:"reasoning_content"`
+			Reasoning        string `json:"reasoning"` // OpenRouter's name for it
 			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
@@ -634,6 +747,9 @@ func assemble(r io.Reader, sink Sink) (*Reply, error) {
 		}
 		for _, choice := range ch.Choices {
 			d := choice.Delta
+			if d.ReasoningContent == "" {
+				d.ReasoningContent = d.Reasoning
+			}
 			if d.ReasoningContent != "" {
 				reply.Reasoning += d.ReasoningContent
 				sink.Reasoning(d.ReasoningContent)
@@ -675,6 +791,144 @@ func assemble(r io.Reader, sink Sink) (*Reply, error) {
 	sort.Ints(idx)
 	for _, i := range idx {
 		reply.ToolCalls = append(reply.ToolCalls, *calls[i])
+	}
+	if err := validateBatch(reply.ToolCalls); err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+// responsesEvent is the union of the Responses stream events min reads:
+// text and reasoning-summary deltas for liveness, and the terminal event
+// (completed, incomplete, failed), whose response carries the whole output
+// and the usage. The terminal event is authoritative: calls, items and
+// usage are taken from it, so a delta that was missed costs nothing.
+type responsesEvent struct {
+	Type     string `json:"type"`
+	Delta    string `json:"delta"`
+	Response *struct {
+		Status            string            `json:"status"`
+		Output            []json.RawMessage `json:"output"`
+		IncompleteDetails *struct {
+			Reason string `json:"reason"`
+		} `json:"incomplete_details"`
+		Usage *struct {
+			InputTokens        int `json:"input_tokens"`
+			OutputTokens       int `json:"output_tokens"`
+			InputTokensDetails *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+		} `json:"usage"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	} `json:"response"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+	Message string `json:"message"` // the top-level "error" event
+}
+
+// responsesItem is the part of an output item the loop needs.
+type responsesItem struct {
+	Type      string `json:"type"`
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+	Content   []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
+// assembleResponses folds a Responses SSE stream into one Reply. A stream
+// that ends without a terminal event was cut and is an error, as on the
+// chat wire.
+func assembleResponses(r io.Reader, sink Sink) (*Reply, error) {
+	reply := &Reply{}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	terminated := false
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		var ev responsesEvent
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			return nil, fmt.Errorf("bad stream event: %w", err)
+		}
+		switch ev.Type {
+		case "response.output_text.delta":
+			reply.Content += ev.Delta
+			sink.Text(ev.Delta)
+		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+			reply.Reasoning += ev.Delta
+			sink.Reasoning(ev.Delta)
+		case "error":
+			msg := ev.Message
+			if ev.Error != nil {
+				msg = ev.Error.Message
+			}
+			return nil, &apiError{Status: 200, Message: msg}
+		case "response.completed", "response.incomplete", "response.failed":
+			if ev.Response == nil {
+				return nil, errors.New("terminal event without a response")
+			}
+			if ev.Type == "response.failed" {
+				msg := "response failed"
+				if ev.Response.Error != nil {
+					msg = ev.Response.Error.Message
+				}
+				return nil, &apiError{Status: 200, Message: msg}
+			}
+			terminated = true
+			text := ""
+			for _, raw := range ev.Response.Output {
+				var it responsesItem
+				if err := json.Unmarshal(raw, &it); err != nil {
+					return nil, fmt.Errorf("bad output item: %w", err)
+				}
+				switch it.Type {
+				case "function_call":
+					reply.ToolCalls = append(reply.ToolCalls, ToolCall{ID: it.CallID, Type: "function", Function: FuncCall{Name: it.Name, Arguments: it.Arguments}})
+				case "message":
+					for _, c := range it.Content {
+						if c.Type == "output_text" {
+							text += c.Text
+						}
+					}
+				}
+				reply.Items = append(reply.Items, raw)
+			}
+			if reply.Content == "" {
+				reply.Content = text // nothing streamed; the sink saw nothing either
+			}
+			switch {
+			case ev.Type == "response.incomplete" && ev.Response.IncompleteDetails != nil && ev.Response.IncompleteDetails.Reason == "max_output_tokens":
+				reply.Finish = "length"
+			case len(reply.ToolCalls) > 0:
+				reply.Finish = "tool_calls"
+			default:
+				reply.Finish = "stop"
+			}
+			if u := ev.Response.Usage; u != nil {
+				reply.Usage = Usage{Prompt: u.InputTokens, Completion: u.OutputTokens}
+				if u.InputTokensDetails != nil {
+					reply.Usage.Cached = u.InputTokensDetails.CachedTokens
+				}
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if !terminated {
+		return nil, errors.New("stream ended before the reply was complete")
 	}
 	if err := validateBatch(reply.ToolCalls); err != nil {
 		return nil, err
@@ -2224,7 +2478,7 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 		a.usage = a.usage.Add(reply.Usage)
 		a.last = reply.Usage
 		reasoning := reply.Reasoning
-		if err := a.append(Message{Role: "assistant", Content: reply.Content, ReasoningContent: &reasoning, ToolCalls: reply.ToolCalls}); err != nil {
+		if err := a.append(Message{Role: "assistant", Content: reply.Content, ReasoningContent: &reasoning, ToolCalls: reply.ToolCalls, Items: reply.Items}); err != nil {
 			return "", err
 		}
 		if len(reply.ToolCalls) == 0 {
@@ -2250,7 +2504,7 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 			a.usage = a.usage.Add(report.Usage)
 			a.last = report.Usage
 			r := report.Reasoning
-			if err := a.append(Message{Role: "assistant", Content: report.Content, ReasoningContent: &r}); err != nil {
+			if err := a.append(Message{Role: "assistant", Content: report.Content, ReasoningContent: &r, Items: report.Items}); err != nil {
 				return "", err
 			}
 			return report.Content, fmt.Errorf("%w: %d tool rounds", errBudget, a.cfg.MaxRounds)

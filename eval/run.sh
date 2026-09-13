@@ -34,26 +34,28 @@ for task in $tasks; do
     sh "$tdir/setup.sh" "$dir" || { echo "$task: setup failed" >&2; exit 2; }
     args=""; [ -f "$tdir/args" ] && args=$(cat "$tdir/args")
     start=$(date +%s)
+    # The result and the log live beside the root, not in it: the root is
+    # the model's, and a grader compares it against what setup made.
     if [ -f "$tdir/run.sh" ]; then
-      DIR="$dir" sh "$tdir/run.sh" > "$dir/.result.json" 2> "$dir/.stderr.log"; code=$?
+      DIR="$dir" sh "$tdir/run.sh" > "$dir.result.json" 2> "$dir.stderr.log"; code=$?
     else
       # shellcheck disable=SC2086
-      "$MIN" -provider "$PROVIDER" -json -quiet -cwd "$dir" $args -p "$(cat "$tdir/prompt.txt")" > "$dir/.result.json" 2> "$dir/.stderr.log"; code=$?
+      "$MIN" -provider "$PROVIDER" -json -quiet -cwd "$dir" $args -p "$(cat "$tdir/prompt.txt")" > "$dir.result.json" 2> "$dir.stderr.log"; code=$?
     fi
     wall=$(( $(date +%s) - start ))
-    res=$(cat "$dir/.result.json")
+    res=$(cat "$dir.result.json")
     outcome=$(printf '%s' "$res" | sed -n 's/.*"outcome":"\([a-z]*\)".*/\1/p')
     prompt=$(printf '%s' "$res" | sed -n 's/.*"prompt":\([0-9]*\).*/\1/p')
     cached=$(printf '%s' "$res" | sed -n 's/.*"cached":\([0-9]*\).*/\1/p')
     completion=$(printf '%s' "$res" | sed -n 's/.*"completion":\([0-9]*\).*/\1/p')
     requests=$(printf '%s' "$res" | sed -n 's/.*"requests":\([0-9]*\).*/\1/p')
     pass=no
-    if sh "$tdir/check.sh" "$dir" "$dir/.result.json" >/dev/null 2>&1; then pass=yes; ok=$((ok+1)); fi
+    if sh "$tdir/check.sh" "$dir" "$dir.result.json" >/dev/null 2>&1; then pass=yes; ok=$((ok+1)); fi
     printf '%-14s run=%d pass=%-3s outcome=%-9s exit=%-3s wall=%4ss requests=%-3s prompt=%-6s cached=%-6s completion=%s\n' \
       "$task" "$i" "$pass" "${outcome:-none}" "$code" "$wall" "${requests:-0}" "${prompt:-0}" "${cached:-0}" "${completion:-0}"
     printf '{"task":"%s","run":%d,"provider":"%s","pass":%s,"outcome":"%s","exit":%d,"wall_s":%d,"requests":%s,"prompt":%s,"cached":%s,"completion":%s}\n' \
       "$task" "$i" "$PROVIDER" "$( [ $pass = yes ] && echo true || echo false )" "${outcome:-none}" "$code" "$wall" "${requests:-0}" "${prompt:-0}" "${cached:-0}" "${completion:-0}" >> "$out"
-    if [ "$pass" = no ] && [ -n "${KEEP:-}" ]; then echo "  kept $dir" ; else rm -rf "$dir"; fi
+    if [ "$pass" = no ] && [ -n "${KEEP:-}" ]; then echo "  kept $dir and $dir.*"; else rm -rf "$dir" "$dir".*; fi
     i=$((i+1))
   done
   total=$((total+N)); passed=$((passed+ok))

@@ -106,7 +106,12 @@ func TestAssembleFixtures(t *testing.T) {
 				Usage Usage `json:"usage"`
 			}
 			must(t, json.Unmarshal(wantRaw, &want))
-			r, err := assemble(strings.NewReader(string(raw)), nopSink{})
+			var r *Reply
+			if strings.HasPrefix(filepath.Base(f), "responses-") {
+				r, err = assembleResponses(strings.NewReader(string(raw)), nopSink{})
+			} else {
+				r, err = assemble(strings.NewReader(string(raw)), nopSink{})
+			}
 			if want.Error {
 				if err == nil {
 					t.Fatalf("must be rejected, got %+v", r)
@@ -154,14 +159,72 @@ func TestRequestReasoningReplayPerProvider(t *testing.T) {
 	if strings.Contains(string(raw), "reasoning_content") || strings.Contains(string(raw), `"thinking"`) {
 		t.Fatalf("openai must not see deepseek fields: %s", raw)
 	}
-	if !strings.Contains(string(raw), `"reasoning_effort":"high"`) || !strings.Contains(string(raw), `"max_completion_tokens":9`) {
-		t.Fatalf("openai fields wrong: %s", raw)
+	for _, want := range []string{`"reasoning":{"effort":"max","summary":"auto"}`, `"max_output_tokens":9`, `"store":false`, `"include":["reasoning.encrypted_content"]`,
+		`{"description":"","name":"x","parameters":{"properties":null,"type":"object"},"strict":false,"type":"function"}`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("openai (responses) lacks %s: %s", want, raw)
+		}
+	}
+	raw, _ = json.Marshal((&Client{cfg: &Config{Provider: providers["openai"], Model: "m", Think: "off"}}).request(msgs, nil))
+	if strings.Contains(string(raw), `"reasoning"`) {
+		t.Fatalf("think off must leave the model's default effort: %s", raw)
+	}
+
+	or := &Client{cfg: &Config{Provider: providers["openrouter"], Model: "m", Think: "low"}}
+	raw, _ = json.Marshal(or.request(msgs, tools))
+	if !strings.Contains(string(raw), `"reasoning":{"effort":"low"}`) || strings.Contains(string(raw), "reasoning_content") {
+		t.Fatalf("openrouter fields wrong: %s", raw)
+	}
+	raw, _ = json.Marshal((&Client{cfg: &Config{Provider: providers["openrouter"], Model: "m", Think: "off"}}).request(msgs, tools))
+	if !strings.Contains(string(raw), `"reasoning":{"enabled":false}`) {
+		t.Fatalf("openrouter think off: %s", raw)
 	}
 
 	lc := &Client{cfg: &Config{Provider: providers["local"], Model: "m", Think: "off"}}
 	raw, _ = json.Marshal(lc.request(msgs, tools))
 	if !strings.Contains(string(raw), `"chat_template_kwargs":{"enable_thinking":false}`) || strings.Contains(string(raw), "reasoning_content") {
 		t.Fatalf("local thinking-off shape wrong: %s", raw)
+	}
+}
+
+// The Responses wire replays an assistant turn as its own items (that is
+// what carries the encrypted reasoning), rebuilds one that has no items,
+// turns tool results into function_call_output, and lifts the system
+// message into instructions.
+func TestResponsesRequestMapsTheTranscript(t *testing.T) {
+	items := []json.RawMessage{
+		json.RawMessage(`{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"SECRET"}`),
+		json.RawMessage(`{"type":"function_call","id":"fc_1","call_id":"c1","name":"read","arguments":"{}"}`),
+	}
+	msgs := []Message{
+		{Role: "system", Content: "rules"},
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", ToolCalls: []ToolCall{{ID: "c1", Function: FuncCall{Name: "read", Arguments: "{}"}}}, Items: items},
+		{Role: "tool", ToolCallID: "c1", Content: "out"},
+		{Role: "assistant", Content: "[compacted]", ToolCalls: []ToolCall{{ID: "c2", Function: FuncCall{Name: "exec", Arguments: `{"cmd":"ls"}`}}}},
+		{Role: "tool", ToolCallID: "c2", Content: "files"},
+	}
+	c := &Client{cfg: &Config{Provider: providers["openai"], Model: "m", Think: "high"}}
+	req := c.request(msgs, nil)
+	if req["instructions"] != "rules" {
+		t.Fatalf("instructions: %v", req["instructions"])
+	}
+	raw, _ := json.Marshal(req["input"])
+	want := `[{"content":"hi","role":"user"},` +
+		`{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"SECRET"},` +
+		`{"type":"function_call","id":"fc_1","call_id":"c1","name":"read","arguments":"{}"},` +
+		`{"call_id":"c1","output":"out","type":"function_call_output"},` +
+		`{"content":"[compacted]","role":"assistant"},` +
+		`{"arguments":"{\"cmd\":\"ls\"}","call_id":"c2","name":"exec","type":"function_call"},` +
+		`{"call_id":"c2","output":"files","type":"function_call_output"}]`
+	if string(raw) != want {
+		t.Fatalf("input:\n%s\nwant\n%s", raw, want)
+	}
+	// and the chat wire never sees the items
+	ds := &Client{cfg: &Config{Provider: providers["deepseek"], Model: "m", Think: "high"}}
+	raw, _ = json.Marshal(ds.request(msgs, nil))
+	if strings.Contains(string(raw), "SECRET") || strings.Contains(string(raw), `"items"`) {
+		t.Fatalf("items leaked onto the chat wire: %s", raw)
 	}
 }
 

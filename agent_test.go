@@ -426,6 +426,46 @@ func TestMalformedBatchIsRejectedBeforeDispatch(t *testing.T) {
 	}
 }
 
+// The whole loop over the Responses wire, on the recorded streams: the
+// tool call in round one runs, and round two's request replays the
+// encrypted reasoning item, the call and its output, under instructions.
+func TestTurnOverResponsesDialect(t *testing.T) {
+	call, err := os.ReadFile(filepath.Join("testdata", "streams", "responses-gpt5-mini-tool-call.sse"))
+	must(t, err)
+	text, err := os.ReadFile(filepath.Join("testdata", "streams", "responses-gpt5-mini-text.sse"))
+	must(t, err)
+	fp := &fakeProvider{t: t, replies: []string{string(call), string(text)}}
+	a, root := newTestAgentWith(t, fp, ModeWorkspace, "openai")
+	must(t, os.WriteFile(filepath.Join(root, "notes.txt"), []byte("milk\neggs\n"), 0o644))
+	out, err := a.Turn(context.Background(), "What is in notes.txt?")
+	must(t, err)
+	if out != "File contents:\n1| milk\n2| eggs" {
+		t.Fatalf("answer: %q", out)
+	}
+	if roles(a.msgs) != "uata" || len(a.msgs[1].Items) != 2 {
+		t.Fatalf("transcript: %s items=%d", roles(a.msgs), len(a.msgs[1].Items))
+	}
+	second := fp.body(1)
+	if second["instructions"] != "sys" || second["store"] != false {
+		t.Fatalf("second request: %v", second)
+	}
+	input := second["input"].([]any)
+	if len(input) != 4 {
+		t.Fatalf("input items: %d %v", len(input), input)
+	}
+	reasoning := input[1].(map[string]any)
+	if reasoning["type"] != "reasoning" || reasoning["encrypted_content"] == "" {
+		t.Fatalf("encrypted reasoning not replayed: %v", reasoning)
+	}
+	result := input[3].(map[string]any)
+	if result["type"] != "function_call_output" || result["call_id"] != "call_aNFvRpXeAa3HgE6KGI0bWW8C" || !strings.Contains(result["output"].(string), "1| milk") {
+		t.Fatalf("tool output item: %v", result)
+	}
+	if a.usage.Prompt != 64+143 || a.usage.Completion != 64+14 {
+		t.Fatalf("usage: %+v", a.usage)
+	}
+}
+
 func TestSubAgentIsBoundedAndReports(t *testing.T) {
 	fp := &fakeProvider{t: t, replies: []string{
 		toolReply("c1", "agent", `{"task":"look around","readonly":true}`),

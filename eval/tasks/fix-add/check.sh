@@ -21,5 +21,5 @@ go test ./... >/dev/null 2>&1 || exit 1
 rm -f zz_check_test.go
 grep -q '"outcome":"done"' "$2" || exit 1
 grep -q '"written":\["add.go"\]' "$2" || exit 1
-# nothing else appeared or changed
+# nothing else appeared (.min is the runtime's own state)
 test "$(ls -A | grep -v '^\.min$' | sort | tr '\n' ' ')" = "add.go go.mod "

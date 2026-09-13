@@ -13,3 +13,11 @@ Each `<name>.sse` is fed through `assemble` and compared with `<name>.want.json`
 
 Add a fixture whenever a provider changes shape; the test fails loudly if
 the assembler stops understanding one.
+- `responses-gpt5-mini-*.sse`: the Responses dialect, recorded live on
+  2026-09-13 with curl through openrouter.ai/api/v1/responses against
+  `openai/gpt-5-mini` (`store: false`, `include: reasoning.encrypted_content`,
+  `reasoning.summary: auto`). The tool-call stream ends in a
+  `response.completed` whose output holds a `reasoning` item with
+  `encrypted_content` and a `function_call` item; the text stream is the
+  next round, made by replaying those items plus a `function_call_output`.
+  Files with the `responses-` prefix go through `assembleResponses`.

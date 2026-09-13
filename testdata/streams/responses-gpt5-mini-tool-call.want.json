@@ -1,0 +1,1 @@
+{"content":"","finish":"tool_calls","reasoning":true,"tool_calls":[{"id":"call_aNFvRpXeAa3HgE6KGI0bWW8C","name":"read","arguments":"{\"path\":\"notes.txt\"}"}],"usage":{"prompt":64,"cached":0,"completion":64}}

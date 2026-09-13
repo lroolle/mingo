@@ -153,10 +153,15 @@ func newTestSandbox(t *testing.T, mode Mode) (*Sandbox, string) {
 
 func newTestAgent(t *testing.T, fp *fakeProvider, mode Mode) (*Agent, string) {
 	t.Helper()
+	return newTestAgentWith(t, fp, mode, "deepseek")
+}
+
+func newTestAgentWith(t *testing.T, fp *fakeProvider, mode Mode, provider string) (*Agent, string) {
+	t.Helper()
 	srv := httptest.NewServer(fp)
 	t.Cleanup(srv.Close)
 	sb, root := newTestSandbox(t, mode)
-	p := *providers["deepseek"]
+	p := *providers[provider]
 	p.BaseURL = srv.URL
 	cfg := &Config{Provider: &p, APIKey: "k", Model: "m", Think: "high", Context: 1000, Root: root, Mode: mode, MaxRounds: 5}
 	tb := newToolbox(sb)
