@@ -1604,25 +1604,48 @@ func decode(args json.RawMessage, v any, required ...string) error {
 
 // writeAtomic replaces rel through a temp file and a rename inside the jail,
 // so a crash leaves either the old file or the new one, never a torn one.
+// The temp file has a random name and is created exclusively: a name that
+// can be predicted is a name a symlink or a neighbour's write can already
+// own, and O_EXCL refuses to open through either. Only a file this call
+// created is ever removed.
 func (tb *Toolbox) writeAtomic(rel string, data []byte) error {
 	mode := os.FileMode(0o644)
 	if info, err := tb.sb.fs.Stat(rel); err == nil {
 		mode = info.Mode().Perm()
 	}
-	tmp := rel + ".min-tmp"
-	f, err := tb.sb.fs.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
+	var tmp string
+	var f *os.File
+	for range 8 {
+		var r [4]byte
+		if _, err := rand.Read(r[:]); err != nil {
+			return err
+		}
+		tmp = rel + ".min-" + hex.EncodeToString(r[:]) + ".tmp"
+		var err error
+		f, err = tb.sb.fs.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+	}
+	if f == nil {
+		return errors.New("could not create a temp file")
+	}
+	fail := func(err error) error {
+		f.Close()
+		tb.sb.fs.Remove(tmp)
 		return err
+	}
+	if err := f.Chmod(mode); err != nil { // O_CREATE applied the umask
+		return fail(err)
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
-		tb.sb.fs.Remove(tmp)
-		return err
+		return fail(err)
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
-		tb.sb.fs.Remove(tmp)
-		return err
+		return fail(err)
 	}
 	if err := f.Close(); err != nil {
 		tb.sb.fs.Remove(tmp)
@@ -1751,6 +1774,9 @@ func (tb *Toolbox) writeTool() *Tool {
 			if err := tb.sb.fs.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 				return "", err
 			}
+			if err := ctx.Err(); err != nil {
+				return "", err // cancelled while checking; nothing has changed yet
+			}
 			if err := tb.writeAtomic(rel, []byte(a.Content)); err != nil {
 				return "", err
 			}
@@ -1803,6 +1829,9 @@ func (tb *Toolbox) editTool() *Tool {
 			}
 			out, line, err := replaceUnique(string(src), a.Old, a.New)
 			if err != nil {
+				return "", err
+			}
+			if err := ctx.Err(); err != nil {
 				return "", err
 			}
 			if err := tb.writeAtomic(rel, []byte(out)); err != nil {
@@ -2159,17 +2188,18 @@ func (a *Agent) Compact(ctx context.Context) error {
 		{Role: "assistant", Content: "Understood. Continuing from the summary.", ReasoningContent: new(string)},
 	}
 	fresh = append(fresh, pending...)
-	// Commit: the new log is written in full before memory changes, so a
-	// disk error here leaves the old transcript in memory and the old
-	// file intact on disk.
+	// "Always shrinks" is checked, not assumed: a summary that is not
+	// smaller than what it replaces is refused, and the transcript stays.
+	before, _ := json.Marshal(body)
+	if len(summary) >= len(before) {
+		return fmt.Errorf("summary (%d bytes) is not smaller than the transcript (%d bytes); nothing changed", len(summary), len(before))
+	}
+	// Commit: the new log is staged in full and synced before the session
+	// switches to it and before memory changes, so a disk error anywhere
+	// leaves the old transcript in memory, the old file as the session.
 	if a.session != nil {
-		if err := a.session.Rotate(); err != nil {
-			return err
-		}
-		for _, m := range fresh {
-			if err := a.session.Append(m); err != nil {
-				return fmt.Errorf("session: %w", err)
-			}
+		if err := a.session.Replace(fresh); err != nil {
+			return fmt.Errorf("session: %w", err)
 		}
 	}
 	a.msgs, a.last = fresh, Usage{}
@@ -2194,6 +2224,14 @@ func (a *Agent) summarize(ctx context.Context, msgs []Message) (string, error) {
 		reply, err := a.client.Complete(ctx, req, nil, nopSink{})
 		if err == nil {
 			a.usage = a.usage.Add(reply.Usage)
+			// The operation entrusted with replacing the memory gets the
+			// same scrutiny as a turn: a cut or empty summary is no summary.
+			if reply.Finish == "length" {
+				return "", errors.New("the summary was cut by the token cap; raise -max-tokens")
+			}
+			if strings.TrimSpace(reply.Content) == "" {
+				return "", errors.New("the model returned an empty summary")
+			}
 			return reply.Content, nil
 		}
 		if !isOverflow(err) || len(msgs) == 0 {
@@ -2345,12 +2383,25 @@ func openSession(cfg *Config, resume string) (*Session, []Message, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	msgs, err := loadSession(path)
+	msgs, good, err := loadSession(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resume: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
+		return nil, nil, fmt.Errorf("resume: %w", err)
+	}
+	if err := lockSession(f); err != nil {
+		f.Close()
+		return nil, nil, fmt.Errorf("resume: %w", err)
+	}
+	// The bytes are repaired before anything is appended after them: a
+	// torn last record is cut at the last good boundary and a complete
+	// record that lost its newline gets it back. Otherwise the first new
+	// message would be glued to the torn one and the next resume would
+	// find a corrupt line where this one found a torn tail.
+	if err := repairTail(f, good); err != nil {
+		f.Close()
 		return nil, nil, fmt.Errorf("resume: %w", err)
 	}
 	s := &Session{dir: dir, id: id, path: path, f: f, meta: meta}
@@ -2384,6 +2435,10 @@ func newSession(dir string, meta map[string]any) (*Session, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := lockSession(f); err != nil {
+			f.Close()
+			return nil, err
+		}
 		s := &Session{dir: dir, id: id, path: path, f: f, meta: meta}
 		header := map[string]any{"id": id, "created": time.Now().Format(time.RFC3339)}
 		for k, v := range meta {
@@ -2408,19 +2463,77 @@ func sessionPath(dir, id string) (string, error) {
 	return filepath.Join(dir, id+".jsonl"), nil
 }
 
-// lastSession is the newest top-level session in dir by id, which sorts by
-// creation time.
+// lastSession is the top-level session most recently written to. An id
+// orders by creation only to the second and by chance within it, so the
+// file's modification time decides: "last" means last active, which is
+// also the one a person means by it. Ties fall to the greater id.
 func lastSession(dir string) (string, error) {
-	ids, err := listSessions(dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", err
 	}
-	for i := len(ids) - 1; i >= 0; i-- {
-		if !strings.Contains(ids[i], "-sub") {
-			return ids[i], nil
+	best, bestT := "", time.Time{}
+	for _, e := range entries {
+		id := strings.TrimSuffix(e.Name(), ".jsonl")
+		if id == e.Name() || strings.Contains(id, "-sub") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		t := info.ModTime()
+		if best == "" || t.After(bestT) || (t.Equal(bestT) && id > best) {
+			best, bestT = id, t
 		}
 	}
-	return "", errors.New("no session to resume")
+	if best == "" {
+		return "", errors.New("no session to resume")
+	}
+	return best, nil
+}
+
+// lockSession takes an exclusive advisory lock for as long as the file is
+// open, so two processes never append to one log: the second gets an error
+// instead of an interleaved transcript.
+func lockSession(f *os.File) error {
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return fmt.Errorf("%s is open in another process", filepath.Base(f.Name()))
+	}
+	return nil
+}
+
+// repairTail makes the log end at a record boundary: bytes past good (a
+// torn record) are cut, and a complete last record that lost its newline
+// gets one. The decision is written to disk before any append.
+func repairTail(f *os.File, good int64) error {
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	changed := false
+	if info.Size() > good {
+		if err := f.Truncate(good); err != nil {
+			return err
+		}
+		changed = true
+	}
+	if good > 0 {
+		var last [1]byte
+		if _, err := f.ReadAt(last[:], good-1); err != nil {
+			return err
+		}
+		if last[0] != '\n' {
+			if _, err := f.Write([]byte{'\n'}); err != nil {
+				return err
+			}
+			changed = true
+		}
+	}
+	if changed {
+		return f.Sync()
+	}
+	return nil
 }
 
 func listSessions(dir string) ([]string, error) {
@@ -2438,43 +2551,47 @@ func listSessions(dir string) ([]string, error) {
 	return ids, nil
 }
 
-// loadSession parses a log: the header line, then one Message per line. A
-// torn last line (the crash happened mid-write) is dropped, not fatal; any
-// other corrupt line is.
-func loadSession(path string) ([]Message, error) {
+// loadSession parses a log: the header line, then one Message per line.
+// good is the byte offset of the last record boundary that parsed: a torn
+// last line (the crash happened mid-write, and there is no newline after
+// it) ends before it, and is not an error; a corrupt line anywhere else
+// is. A complete last record without its newline is kept, and good ends at
+// its last byte so the caller can terminate it.
+func loadSession(path string) (msgs []Message, good int64, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
-	var msgs []Message
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
-	first := true
-	var pendingErr error
-	for sc.Scan() {
-		if pendingErr != nil {
-			return nil, pendingErr
+	r := bufio.NewReaderSize(f, 64<<10)
+	var off int64
+	for lineNo := 1; ; lineNo++ {
+		line, rerr := r.ReadBytes('\n')
+		if len(line) == 0 {
+			if rerr != nil && rerr != io.EOF {
+				return nil, 0, rerr
+			}
+			break
 		}
-		line := sc.Bytes()
-		if first {
-			first = false
-			continue // header
+		terminated := line[len(line)-1] == '\n'
+		body := bytes.TrimSpace(line)
+		if lineNo > 1 && len(body) > 0 {
+			var m Message
+			if jerr := json.Unmarshal(body, &m); jerr != nil {
+				if !terminated {
+					break // torn tail: good stays at the previous boundary
+				}
+				return nil, 0, fmt.Errorf("corrupt line %d: %w", lineNo, jerr)
+			}
+			msgs = append(msgs, m)
 		}
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
+		off += int64(len(line))
+		good = off
+		if rerr != nil {
+			break
 		}
-		var m Message
-		if err := json.Unmarshal(line, &m); err != nil {
-			pendingErr = fmt.Errorf("corrupt line %d: %w", len(msgs)+2, err)
-			continue
-		}
-		msgs = append(msgs, m)
 	}
-	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	return msgs, nil
+	return msgs, good, nil
 }
 
 // repairHistory makes a transcript continuable: every tool call gets a
@@ -2527,12 +2644,24 @@ func repairHistory(msgs []Message) (out []Message, tail []Message) {
 	return out, tail
 }
 
-// Rotate closes the current file and starts a fresh one with the same
-// metadata; compaction and /new use it.
-func (s *Session) Rotate() error {
+// Rotate starts a fresh, empty log with the same metadata; /new uses it.
+func (s *Session) Rotate() error { return s.Replace(nil) }
+
+// Replace switches the session to a new log holding msgs. The new file is
+// staged in full and synced first; the session's identity and writer move
+// only after that, so a failure at any write leaves the old log as the
+// session, with nothing new on disk. Compaction commits through here.
+func (s *Session) Replace(msgs []Message) error {
 	fresh, err := newSession(s.dir, s.meta)
 	if err != nil {
 		return err
+	}
+	for _, m := range msgs {
+		if err := fresh.Append(m); err != nil {
+			fresh.Close()
+			os.Remove(fresh.path)
+			return err
+		}
 	}
 	s.Close()
 	s.id, s.path, s.f, s.subs = fresh.id, fresh.path, fresh.f, 0
@@ -2600,7 +2729,7 @@ func describeSessions(dir string) ([]string, error) {
 		if err != nil {
 			continue
 		}
-		msgs, err := loadSession(path)
+		msgs, _, err := loadSession(path)
 		if err != nil {
 			out = append(out, fmt.Sprintf("%s  (unreadable: %v)", id, err))
 			continue
@@ -2904,7 +3033,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		msgs, err := loadSession(path)
+		msgs, _, err := loadSession(path)
 		if err != nil {
 			return err
 		}

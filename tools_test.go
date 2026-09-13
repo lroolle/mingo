@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -94,7 +96,7 @@ func TestReadWriteEditRules(t *testing.T) {
 	if info, err := os.Stat(filepath.Join(root, "b.txt")); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode not preserved: %v %v", info.Mode(), err)
 	}
-	if m, _ := filepath.Glob(filepath.Join(root, "*.min-tmp")); len(m) != 0 {
+	if m, _ := filepath.Glob(filepath.Join(root, "*.tmp")); len(m) != 0 {
 		t.Fatalf("temp files left behind: %v", m)
 	}
 	tb.sb.Mode = ModeReadOnly
@@ -109,6 +111,50 @@ func TestReadWriteEditRules(t *testing.T) {
 	}
 	if calls, written := tb.Receipt(); calls != 0 || strings.Join(written, ",") != "deep/a.txt,b.txt" {
 		t.Fatalf("receipt: calls=%d written=%v", calls, written)
+	}
+}
+
+// The temp file behind an atomic write is private to the call: writers
+// racing on one target never share it, an unrelated file beside the target
+// is never truncated, and nothing is left behind.
+func TestAtomicWriteTempIsPrivate(t *testing.T) {
+	tb, root, _ := newToolboxWithFiles(t, ModeWorkspace)
+	bystander := filepath.Join(root, "t.txt.min-tmp")
+	must(t, os.WriteFile(bystander, []byte("mine"), 0o600))
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- tb.writeAtomic("t.txt", []byte(fmt.Sprintf("writer %d\n", i)))
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("a racing writer failed: %v", err)
+		}
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "t.txt"))
+	if !strings.HasPrefix(string(got), "writer ") {
+		t.Fatalf("target holds %q", got)
+	}
+	if b, _ := os.ReadFile(bystander); string(b) != "mine" {
+		t.Fatalf("bystander truncated: %q", b)
+	}
+	if m, _ := filepath.Glob(filepath.Join(root, "*.tmp")); len(m) != 0 {
+		t.Fatalf("temp files left behind: %v", m)
+	}
+	// a symlink at a would-be temp name is never followed: the temp name is
+	// random, and O_EXCL refuses an existing path anyway
+	victim := filepath.Join(root, "victim.txt")
+	must(t, os.WriteFile(victim, []byte("keep"), 0o600))
+	must(t, os.Symlink("victim.txt", filepath.Join(root, "u.txt.min-00000000.tmp")))
+	must(t, tb.writeAtomic("u.txt", []byte("new")))
+	if b, _ := os.ReadFile(victim); string(b) != "keep" {
+		t.Fatalf("victim overwritten through a temp-name symlink: %q", b)
 	}
 }
 

@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestFreshSessionsHaveUniquePaths(t *testing.T) {
@@ -58,6 +62,7 @@ func TestSessionAppendResumeAndSub(t *testing.T) {
 	}
 	must(t, s.Append(Message{Role: "assistant", Content: "b", ReasoningContent: new(string)}))
 	must(t, s.Append(Message{Role: "assistant", ToolCalls: []ToolCall{{ID: "c", Type: "function"}}}))
+	s.Close() // the log is exclusive while open; see TestSessionIsExclusiveWhileOpen
 	r, hist, err := openSession(cfg, "last")
 	must(t, err)
 	r.Close()
@@ -190,35 +195,171 @@ func TestResumeRepairsPartialBatchAndStaysStable(t *testing.T) {
 	}
 }
 
-func TestLoadSessionToleratesTornLastLine(t *testing.T) {
+// The review's scenario: a torn tail must not only load, it must be
+// repaired on disk before anything is appended after it. The test is the
+// cycle: resume, append, resume, append, resume, with history intact.
+func TestTornTailIsRepairedOnDiskAndSurvivesResumeCycles(t *testing.T) {
+	cases := map[string]string{
+		"partial record":       `{"role":"user","content":"cut off mid-wri`,
+		"complete, no newline": `{"role":"user","content":"whole"}`,
+	}
+	for name, tail := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{Root: t.TempDir(), Model: "m"}
+			s, _, err := openSession(cfg, "")
+			must(t, err)
+			must(t, s.Append(Message{Role: "user", Content: "a"}))
+			must(t, s.Append(Message{Role: "assistant", Content: "b", ReasoningContent: new(string)}))
+			s.Close()
+			f, err := os.OpenFile(s.path, os.O_WRONLY|os.O_APPEND, 0o600)
+			must(t, err)
+			f.WriteString(tail)
+			f.Close()
+			want := "ua"
+			if name == "complete, no newline" {
+				want = "uau" // a whole record is history, newline or not
+			}
+			for cycle := 1; cycle <= 3; cycle++ {
+				r, hist, err := openSession(cfg, s.id)
+				if err != nil {
+					t.Fatalf("resume %d: %v", cycle, err)
+				}
+				if roles(hist) != want {
+					t.Fatalf("resume %d: roles %s, want %s", cycle, roles(hist), want)
+				}
+				must(t, r.Append(Message{Role: "user", Content: fmt.Sprint("more", cycle)}))
+				must(t, r.Append(Message{Role: "assistant", Content: "ok", ReasoningContent: new(string)}))
+				r.Close()
+				want += "ua"
+			}
+			b, _ := os.ReadFile(s.path)
+			if !bytes.HasSuffix(b, []byte("\n")) || bytes.Contains(b, []byte("mid-wri")) {
+				t.Fatalf("log not repaired on disk: %q", b)
+			}
+			// every line is one whole record: the file is readable by anything
+			for i, line := range bytes.Split(bytes.TrimSuffix(b, []byte("\n")), []byte("\n")) {
+				if !json.Valid(line) {
+					t.Fatalf("line %d is not JSON: %q", i+1, line)
+				}
+			}
+		})
+	}
+	// a corrupt line in the middle is still fatal: that is not a torn write
+	cfg := &Config{Root: t.TempDir(), Model: "m"}
+	s, _, err := openSession(cfg, "")
+	must(t, err)
+	s.Close()
+	must(t, os.WriteFile(s.path, []byte("{}\n{\"role\":\"user\",\"content\":\"a\"}\nnot json\n{\"role\":\"user\",\"content\":\"b\"}\n"), 0o600))
+	if _, _, err := loadSession(s.path); err == nil || !strings.Contains(err.Error(), "corrupt line 3") {
+		t.Fatalf("mid-file corruption must fail: %v", err)
+	}
+	if _, _, err := openSession(cfg, s.id); err == nil {
+		t.Fatal("resume of a corrupt log must fail, not truncate it")
+	}
+	if b, _ := os.ReadFile(s.path); !bytes.Contains(b, []byte("not json")) {
+		t.Fatal("a failed resume must not rewrite the file")
+	}
+}
+
+func TestSessionIsExclusiveWhileOpen(t *testing.T) {
 	cfg := &Config{Root: t.TempDir(), Model: "m"}
 	s, _, err := openSession(cfg, "")
 	must(t, err)
 	must(t, s.Append(Message{Role: "user", Content: "a"}))
-	must(t, s.Append(Message{Role: "assistant", Content: "b"}))
+	if _, _, err := openSession(cfg, s.id); err == nil || !strings.Contains(err.Error(), "another process") {
+		t.Fatalf("a second writer must be refused: %v", err)
+	}
+	if _, _, err := openSession(cfg, "last"); err == nil {
+		t.Fatal("resume last must be refused too")
+	}
 	s.Close()
-	f, err := os.OpenFile(s.path, os.O_WRONLY|os.O_APPEND, 0o600)
-	must(t, err)
-	f.WriteString(`{"role":"user","content":"cut off mid-wri`)
-	f.Close()
-	msgs, err := loadSession(s.path)
-	must(t, err)
-	if roles(msgs) != "ua" {
-		t.Fatalf("torn line must be dropped: %s", roles(msgs))
-	}
-	// but a corrupt line in the middle is fatal
-	must(t, os.WriteFile(s.path, []byte("{}\n{\"role\":\"user\",\"content\":\"a\"}\nnot json\n{\"role\":\"user\",\"content\":\"b\"}\n"), 0o600))
-	if _, err := loadSession(s.path); err == nil || !strings.Contains(err.Error(), "corrupt line 3") {
-		t.Fatalf("mid-file corruption must fail: %v", err)
-	}
-	// the resumed session then continues appending after the torn line was ignored
-	must(t, os.WriteFile(s.path, []byte("{}\n{\"role\":\"user\",\"content\":\"a\"}\n"), 0o600))
 	r, hist, err := openSession(cfg, s.id)
 	must(t, err)
-	must(t, r.Append(Message{Role: "assistant", Content: "c"}))
 	r.Close()
-	if len(hist) != 1 {
-		t.Fatalf("hist: %+v", hist)
+	if roles(hist) != "u" {
+		t.Fatalf("after close: %s", roles(hist))
+	}
+}
+
+// Two sessions created in the same second order by chance in their ids.
+// "last" is the one most recently written to, whatever its id.
+func TestLastSessionIsTheLastActive(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "sessions")
+	must(t, os.MkdirAll(dir, 0o700))
+	older := filepath.Join(dir, "20260913-120000-ffffff.jsonl")
+	newer := filepath.Join(dir, "20260913-120000-000000.jsonl")
+	must(t, os.WriteFile(older, []byte("{}\n"), 0o600))
+	must(t, os.WriteFile(newer, []byte("{}\n"), 0o600))
+	must(t, os.WriteFile(filepath.Join(dir, "20260913-130000-aaaaaa-sub1.jsonl"), []byte("{}\n"), 0o600))
+	base := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	must(t, os.Chtimes(older, base, base))
+	must(t, os.Chtimes(newer, base.Add(time.Second), base.Add(time.Second)))
+	must(t, os.Chtimes(filepath.Join(dir, "20260913-130000-aaaaaa-sub1.jsonl"), base.Add(time.Hour), base.Add(time.Hour)))
+	if id, err := lastSession(dir); err != nil || id != "20260913-120000-000000" {
+		t.Fatalf("last: %s %v", id, err)
+	}
+	// the older-named one becomes last when it is written to again
+	must(t, os.Chtimes(older, base.Add(time.Minute), base.Add(time.Minute)))
+	if id, _ := lastSession(dir); id != "20260913-120000-ffffff" {
+		t.Fatalf("last after activity: %s", id)
+	}
+	// a resumed session is the last one afterwards, by its own append
+	cfg := &Config{Root: t.TempDir(), Model: "m"}
+	a, _, err := openSession(cfg, "")
+	must(t, err)
+	a.Close()
+	b, _, err := openSession(cfg, "")
+	must(t, err)
+	b.Close()
+	past := time.Now().Add(-2 * time.Hour)
+	must(t, os.Chtimes(a.path, past, past))
+	r, _, err := openSession(cfg, a.id)
+	must(t, err)
+	must(t, r.Append(Message{Role: "user", Content: "back"}))
+	r.Close()
+	if id, _ := lastSession(sessionDir(cfg)); id != a.id {
+		t.Fatalf("resumed session must be last: %s want %s", id, a.id)
+	}
+}
+
+// Replace stages the whole new log before the session switches to it. A
+// write that fails after the header must leave the old log as the session
+// and no half-written file behind. The failure is a file-size limit, so
+// the header fits and the summary record does not.
+func TestReplaceKeepsTheOldLogWhenStagingFails(t *testing.T) {
+	cfg := &Config{Root: t.TempDir(), Model: "m"}
+	s, _, err := openSession(cfg, "")
+	must(t, err)
+	defer s.Close()
+	must(t, s.Append(Message{Role: "user", Content: "old"}))
+	oldID, oldPath := s.id, s.path
+	var lim syscall.Rlimit
+	must(t, syscall.Getrlimit(syscall.RLIMIT_FSIZE, &lim))
+	small := lim
+	small.Cur = 200 // a header fits, a 4 KB record does not
+	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &small); err != nil {
+		t.Skip("cannot lower RLIMIT_FSIZE:", err)
+	}
+	t.Cleanup(func() { syscall.Setrlimit(syscall.RLIMIT_FSIZE, &lim) })
+	big := Message{Role: "user", Content: strings.Repeat("x", 4096)}
+	err = s.Replace([]Message{big})
+	syscall.Setrlimit(syscall.RLIMIT_FSIZE, &lim)
+	if err == nil {
+		t.Fatal("replace must fail when the staged log cannot be written")
+	}
+	if s.id != oldID || s.path != oldPath {
+		t.Fatalf("session switched to a partial log: %s", s.id)
+	}
+	must(t, s.Append(Message{Role: "assistant", Content: "still here", ReasoningContent: new(string)}))
+	entries, _ := os.ReadDir(s.dir)
+	if len(entries) != 1 {
+		t.Fatalf("staged file left behind: %d files", len(entries))
+	}
+	s.Close()
+	_, hist, err := openSession(cfg, oldID)
+	must(t, err)
+	if roles(hist) != "ua" {
+		t.Fatalf("old log damaged: %s", roles(hist))
 	}
 }
 

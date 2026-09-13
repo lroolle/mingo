@@ -196,6 +196,38 @@ func TestCompactionShrinksUntilItFits(t *testing.T) {
 	}
 }
 
+// Compaction gets the scrutiny of a turn: a summary cut by the token cap,
+// an empty one, or one that does not shrink the transcript is refused,
+// and the transcript stays exactly as it was.
+func TestCompactionRefusesCutEmptyAndGrowingSummaries(t *testing.T) {
+	old := []Message{
+		{Role: "user", Content: "one"}, {Role: "assistant", Content: "two", ReasoningContent: new(string)},
+	}
+	cases := map[string]string{
+		"cut":     textReplyCut("SUMMARY that ran out of"),
+		"empty":   textReply("   "),
+		"growing": textReply(strings.Repeat("a very long summary ", 20)),
+	}
+	for name, reply := range cases {
+		t.Run(name, func(t *testing.T) {
+			fp := &fakeProvider{t: t, replies: []string{reply}}
+			a, _ := newTestAgent(t, fp, ModeWorkspace)
+			s, _, err := openSession(a.cfg, "")
+			must(t, err)
+			defer s.Close()
+			a.session = s
+			a.msgs = append([]Message(nil), old...)
+			before := s.id
+			if err := a.Compact(context.Background()); err == nil {
+				t.Fatal("compaction must fail")
+			}
+			if roles(a.msgs) != "ua" || a.msgs[0].Content != "one" || s.id != before {
+				t.Fatalf("state changed by a refused compaction: %s %s", roles(a.msgs), s.id)
+			}
+		})
+	}
+}
+
 func TestTurnSkipsTruncatedToolCalls(t *testing.T) {
 	cut := sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"write","arguments":"{\"path\":\"a\",\"con"}}]},"finish_reason":"length"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
 	fp := &fakeProvider{t: t, replies: []string{cut, textReply("ok")}}

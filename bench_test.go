@@ -138,7 +138,7 @@ func BenchmarkSessionAppendAndLoad(b *testing.B) {
 	b.Run("load", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if _, err := loadSession(s.path); err != nil {
+			if _, _, err := loadSession(s.path); err != nil {
 				b.Fatal(err)
 			}
 		}
