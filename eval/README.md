@@ -18,7 +18,7 @@ replaces the generic invocation when a task needs more than one run.
 | task | proves | mode |
 | --- | --- | --- |
 | fix-add | read, edit, verify, report; the receipt names the file | workspace |
-| add-test | writing a new file that compiles and passes | workspace |
+| add-test | writing a new file that compiles and passes; `go test` is not allowlisted, so the run is `-yolo` as an unattended person's would be | full |
 | report-only | a read-only run answers a question and writes nothing | read-only |
 | rename-symbol | one change carried across two files, verified by a build | workspace |
 | resume | a run cut by a request cap is resumed and finished in the same session | workspace |

@@ -1273,7 +1273,9 @@ func (s *Sandbox) Exec(ctx context.Context, cmd string) error {
 		return nil
 	}
 	if s.Confirm == nil {
-		return errors.New("command needs confirmation and nobody is at the console; say what you need or run with -yolo")
+		// The message is for the model: a small one will otherwise try a
+		// dozen spellings of the same command, each a full generation.
+		return errors.New("this command needs a person's consent and nobody is at the console in this run, so no variant of it will run either. Do the rest without it, and say in your report what was not run")
 	}
 	switch s.Confirm(ctx, cmd) {
 	case AllowAlways:
@@ -2856,6 +2858,7 @@ func newSession(dir string, meta map[string]any) (*Session, error) {
 		}
 		if err := s.write(header); err != nil {
 			f.Close()
+			os.Remove(path) // a log without a header is nobody's session
 			return nil, err
 		}
 		return s, nil
