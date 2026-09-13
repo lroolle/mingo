@@ -21,5 +21,8 @@ go test ./... >/dev/null 2>&1 || exit 1
 rm -f zz_check_test.go
 grep -q '"outcome":"done"' "$2" || exit 1
 grep -q '"written":\["add.go"\]' "$2" || exit 1
-# nothing else appeared (.min is the runtime's own state)
+# nothing else appeared: .min is the runtime's own state, and "smoke" is
+# what an allowlisted go build leaves behind when the model verifies that
+# way (a main package builds to ./<module>); both are the task done right
+rm -f smoke
 test "$(ls -A | grep -v '^\.min$' | sort | tr '\n' ' ')" = "add.go go.mod "

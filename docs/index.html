@@ -274,9 +274,9 @@ OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
   <h2><span class="n">4</span>Providers.</h2>
   <table>
     <tr><th>provider</th><th>wire</th><th>default model</th><th>thinking</th></tr>
-    <tr><td>deepseek</td><td>chat completions</td><td>deepseek-v4-flash</td><td>reasoning_content replayed, as the API requires</td></tr>
+    <tr><td>deepseek</td><td>chat completions</td><td>deepseek-flash</td><td>reasoning_content replayed, as the API requires</td></tr>
     <tr><td>openai</td><td>Responses API</td><td>gpt-6-astra</td><td>encrypted reasoning items replayed; nothing stored server-side</td></tr>
-    <tr><td>openrouter</td><td>chat completions</td><td>deepseek/deepseek-v4-flash</td><td>unified reasoning switch; any model id</td></tr>
+    <tr><td>openrouter</td><td>chat completions</td><td>deepseek/deepseek-v4.1-flash</td><td>unified reasoning switch; any model id</td></tr>
     <tr><td>local</td><td>chat completions</td><td>whatever is loaded</td><td>chat template switch; context read from /props; 4096-token cap</td></tr>
   </table>
 

@@ -15,7 +15,7 @@ the model leaves open, and keeps the transcript small.
     go build -o min . && DEEPSEEK_API_KEY=... ./min
 
 ```
-min: root=/work/app model=deepseek:deepseek-v4-flash think=high sandbox=workspace fence=bwrap context=128000 session=20260913-081502-9c1a2f skills=1
+min: root=/work/app model=deepseek:deepseek-flash think=high sandbox=workspace fence=bwrap context=128000 session=20260913-081502-9c1a2f skills=1
 > Add has a bug. Fix it, verify, and tell me in two sentences.
 > exec: ls -la && find . -type f -name '*.go' | head -50
 > read: add.go
@@ -189,9 +189,9 @@ and tool lines on stderr; notes and the receipt stay.
 | key | `DEEPSEEK_API_KEY` | `OPENAI_API_KEY` | `OPENROUTER_API_KEY` | none |
 | endpoint | api.deepseek.com | api.openai.com/v1/responses | openrouter.ai/api/v1 | 127.0.0.1:8080/v1 |
 | wire | chat completions | Responses API | chat completions | chat completions |
-| default model | `deepseek-v4-flash` | `gpt-6-astra` | `deepseek/deepseek-v4-flash` | whatever is loaded |
+| default model | `deepseek-flash` (the vendor's floating alias; `deepseek-v4-pro` for the big one) | `gpt-6-astra` | `deepseek/deepseek-v4.1-flash` | whatever is loaded |
 | context | 128000 | 922000 | 128000 | read from the server's `/props` |
-| thinking | `thinking.type` + `reasoning_effort` | `reasoning.effort` (low, high, max pass through) | `reasoning.effort` / `reasoning.enabled` | `chat_template_kwargs.enable_thinking` |
+| thinking | `thinking.type` + `reasoning_effort` (low, high, max) | `reasoning.effort` (low, medium, high, xhigh, max) | `reasoning.effort` / `reasoning.enabled` (any of those; the model decides what it honours) | `chat_template_kwargs.enable_thinking` |
 | reasoning replay | every assistant message carries `reasoning_content` when tools are present, even empty, or the API answers 400 | the encrypted reasoning items come back and are replayed verbatim; nothing is stored server-side | stripped | stripped |
 | completion cap | the API's | the API's | the API's | 4096 (`-max-tokens` overrides) |
 
@@ -270,7 +270,7 @@ the person what actually changed.
 ```
 -provider     deepseek | openai | openrouter | local    -sandbox      read-only | workspace | full
 -model        model id                                  -yolo         full and never ask
--think        off | low | high | max                    -no-net       cut exec off the network (needs a fence)
+-think        off | low | high | max (+medium, xhigh)   -no-net       cut exec off the network (needs a fence)
 -max-tokens   completion cap (local: 4096)              -unfenced     accept no fence for read-only or no-net
 -max-requests model calls per run                       -p            one prompt, headless
 -max-rounds   tool rounds per turn                      -json         one JSON result on stdout

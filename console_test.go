@@ -139,6 +139,17 @@ func TestParseConfig(t *testing.T) {
 	if _, err := parseConfig([]string{"-think", "wild"}); err == nil {
 		t.Fatal("bad think level must fail")
 	}
+	// levels are per provider: astra takes xhigh, deepseek does not
+	if _, err := parseConfig([]string{"-think", "xhigh", "-cwd", t.TempDir()}); err == nil {
+		t.Fatal("deepseek must refuse xhigh")
+	}
+	t.Setenv("OPENAI_API_KEY", "k")
+	if _, err := parseConfig([]string{"-provider", "openai", "-think", "xhigh", "-cwd", t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Model != "deepseek-flash" {
+		t.Fatalf("deepseek default model: %s", cfg.Model)
+	}
 	// a local server has no completion cap of its own; min gives it one,
 	// and -max-tokens overrides it
 	lc, err := parseConfig([]string{"-provider", "local", "-cwd", t.TempDir()})
@@ -157,7 +168,7 @@ func TestParseConfig(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "k")
 	orc, err := parseConfig([]string{"-provider", "openrouter", "-cwd", t.TempDir()})
 	must(t, err)
-	if orc.Model != "deepseek/deepseek-v4-flash" || orc.Provider.Headers["X-Title"] != "min" {
+	if orc.Model != "deepseek/deepseek-v4.1-flash" || orc.Provider.Headers["X-Title"] != "min" {
 		t.Fatalf("openrouter defaults: %+v", orc)
 	}
 	// explicit boundaries fail closed without a fence, -unfenced accepts

@@ -47,6 +47,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -96,6 +97,9 @@ type Provider struct {
 	Think func(req map[string]any, level string)
 	// MaxTokensKey is "max_tokens", "max_completion_tokens" or "max_output_tokens".
 	MaxTokensKey string
+	// Levels are the -think values this provider accepts besides "off";
+	// nil means the common set (low, high, max).
+	Levels []string
 	// MaxTokens is the completion cap when -max-tokens is 0. Cloud APIs
 	// have their own; a llama-server has none, and a 4B model that starts
 	// thinking in circles would otherwise fill its whole window in one
@@ -106,10 +110,14 @@ type Provider struct {
 
 var providers = map[string]*Provider{
 	"deepseek": {
-		Name:            "deepseek",
-		BaseURL:         "https://api.deepseek.com",
-		KeyEnv:          "DEEPSEEK_API_KEY",
-		DefaultModel:    "deepseek-v4-flash",
+		Name:    "deepseek",
+		BaseURL: "https://api.deepseek.com",
+		KeyEnv:  "DEEPSEEK_API_KEY",
+		// deepseek-flash is the vendor's floating alias: on 2026-09-13
+		// GET /models lists deepseek-flash and deepseek-v4-pro only, the
+		// old deepseek-v4-flash still answers but as deepseek-flash, and
+		// deepseek-v4.1-flash is rejected on the direct API.
+		DefaultModel:    "deepseek-flash",
 		Context:         128000,
 		ReplayReasoning: true,
 		MaxTokensKey:    "max_tokens",
@@ -136,6 +144,7 @@ var providers = map[string]*Provider{
 		Context:      922000,
 		Dialect:      "responses",
 		MaxTokensKey: "max_output_tokens",
+		Levels:       []string{"low", "medium", "high", "xhigh", "max"},
 		Think: func(req map[string]any, level string) {
 			if level == "off" {
 				return // a reasoning model keeps its default effort
@@ -151,10 +160,11 @@ var providers = map[string]*Provider{
 		Name:         "openrouter",
 		BaseURL:      "https://openrouter.ai/api/v1",
 		KeyEnv:       "OPENROUTER_API_KEY",
-		DefaultModel: "deepseek/deepseek-v4-flash",
+		DefaultModel: "deepseek/deepseek-v4.1-flash",
 		Context:      128000,
 		MaxTokensKey: "max_tokens",
 		Headers:      map[string]string{"HTTP-Referer": "https://github.com/lroolle/min.go", "X-Title": "min"},
+		Levels:       []string{"low", "medium", "high", "xhigh", "max"}, // passed through; the model decides what it honours
 		Think: func(req map[string]any, level string) {
 			if level == "off" {
 				req["reasoning"] = map[string]bool{"enabled": false}
@@ -192,7 +202,7 @@ type Config struct {
 	Provider   *Provider
 	APIKey     string
 	Model      string
-	Think      string // off | low | high | max
+	Think      string // off | low | high | max; openai and openrouter also take medium and xhigh
 	MaxTokens  int
 	Context    int    // model context window in tokens, drives compaction; 0 = provider default
 	Root       string // sandbox root, absolute, symlinks resolved
@@ -221,7 +231,7 @@ func parseConfig(args []string) (*Config, error) {
 	var yolo bool
 	fs.StringVar(&providerName, "provider", envOr(envPrefix+"PROVIDER", "deepseek"), "deepseek | openai | openrouter | local")
 	fs.StringVar(&cfg.Model, "model", os.Getenv(envPrefix+"MODEL"), "model id (default per provider)")
-	fs.StringVar(&cfg.Think, "think", envOr(envPrefix+"THINK", "high"), "thinking effort: off | low | high | max")
+	fs.StringVar(&cfg.Think, "think", envOr(envPrefix+"THINK", "high"), "thinking effort: off | low | high | max (openai, openrouter: also medium, xhigh)")
 	fs.IntVar(&cfg.MaxTokens, "max-tokens", 0, "cap on completion tokens (0 = provider default; local caps at 4096)")
 	fs.IntVar(&cfg.Context, "context", 0, "context window in tokens; compaction triggers near it (0 = provider default, local asks the server)")
 	fs.StringVar(&root, "cwd", ".", "sandbox root and working directory")
@@ -278,10 +288,12 @@ func parseConfig(args []string) (*Config, error) {
 	if cfg.MaxTokens == 0 {
 		cfg.MaxTokens = pc.MaxTokens
 	}
-	switch cfg.Think {
-	case "off", "low", "high", "max":
-	default:
-		return nil, fmt.Errorf("-think must be off | low | high | max")
+	levels := pc.Levels
+	if levels == nil {
+		levels = []string{"low", "high", "max"}
+	}
+	if cfg.Think != "off" && !slices.Contains(levels, cfg.Think) {
+		return nil, fmt.Errorf("-think for %s must be off | %s", pc.Name, strings.Join(levels, " | "))
 	}
 	if cfg.MaxRounds < 1 {
 		return nil, fmt.Errorf("-max-rounds must be at least 1")
