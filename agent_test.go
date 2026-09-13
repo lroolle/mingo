@@ -444,3 +444,51 @@ func TestSessionWriteErrorFailsTheTurn(t *testing.T) {
 		t.Fatal("nothing may be sent to the model when the log is broken")
 	}
 }
+
+// A model that hits the token cap with tool calls on every reply must
+// still run out of rounds: truncation does not exempt a round from the
+// budget, or the loop spends forever.
+func TestRoundBudgetCountsTruncatedRounds(t *testing.T) {
+	cut := sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"write","arguments":"{\"path\":\"a\",\"con"}}]},"finish_reason":"length"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
+	fp := &fakeProvider{t: t}
+	for i := 0; i < 20; i++ {
+		fp.replies = append(fp.replies, cut)
+	}
+	a, _ := newTestAgent(t, fp, ModeWorkspace)
+	a.cfg.MaxRounds = 3
+	fp.replies = append([]string{cut, cut, cut, textReply("gave up")}, fp.replies...)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := a.Turn(ctx, "x")
+	if !errors.Is(err, errBudget) || out != "gave up" {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+	if n := fp.requests(); n != 4 {
+		t.Fatalf("%d requests, want MaxRounds+1 = 4", n)
+	}
+	assertClosedBatches(t, a.msgs)
+}
+
+// Compaction commits to the log before memory: when the new log cannot
+// be written, the old transcript is still in memory.
+func TestCompactionKeepsMemoryWhenTheNewLogFails(t *testing.T) {
+	fp := &fakeProvider{t: t, replies: []string{textReply("SUMMARY")}}
+	a, _ := newTestAgent(t, fp, ModeWorkspace)
+	s, _, err := openSession(a.cfg, "")
+	must(t, err)
+	a.session = s
+	a.msgs = []Message{{Role: "user", Content: "old"}, {Role: "assistant", Content: "older", ReasoningContent: new(string)}}
+	// make the sessions dir unwritable so Rotate cannot create a file
+	must(t, os.Chmod(s.dir, 0o500))
+	t.Cleanup(func() { os.Chmod(s.dir, 0o700) })
+	if os.Getuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	err = a.Compact(context.Background())
+	if err == nil {
+		t.Fatal("compaction must fail when the log cannot rotate")
+	}
+	if roles(a.msgs) != "ua" || a.msgs[0].Content != "old" {
+		t.Fatalf("memory changed by a failed commit: %s", roles(a.msgs))
+	}
+}

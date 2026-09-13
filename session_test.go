@@ -249,3 +249,56 @@ func TestSessionHeaderAndListing(t *testing.T) {
 		t.Fatal("empty dir has no last session")
 	}
 }
+
+// llama.cpp numbers calls per reply (call_0, call_1 ...), so ids repeat
+// across batches. Repair must treat each batch on its own: one result per
+// call, never a duplicate that would brick the log.
+func TestRepairHistoryWithRepeatedIDs(t *testing.T) {
+	call := func(ids ...string) Message {
+		m := Message{Role: "assistant"}
+		for _, id := range ids {
+			m.ToolCalls = append(m.ToolCalls, ToolCall{ID: id, Type: "function"})
+		}
+		return m
+	}
+	res := func(id string) Message { return Message{Role: "tool", ToolCallID: id, Content: "r"} }
+	in := []Message{
+		{Role: "user", Content: "u"},
+		call("call_0"), res("call_0"),
+		call("call_0", "call_1"), res("call_0"),
+		call("call_0"), // crash here, no result
+	}
+	out, tail := repairHistory(in)
+	if len(tail) != 1 || tail[0].ToolCallID != "call_0" {
+		t.Fatalf("tail: %+v", tail)
+	}
+	if roles(out) != "uatattat" {
+		t.Fatalf("roles: %s", roles(out))
+	}
+	assertClosedBatches(t, out)
+	// the mid-file gap (call_1) was closed in memory, in place
+	if out[5].ToolCallID != "call_1" || out[5].Content != interruptedResult {
+		t.Fatalf("gap: %+v", out[5])
+	}
+	again, tail2 := repairHistory(out)
+	if roles(again) != roles(out) || len(tail2) != 0 {
+		t.Fatal("not idempotent")
+	}
+}
+
+func TestSessionIDsAreBareNames(t *testing.T) {
+	cfg := &Config{Root: t.TempDir(), Model: "m"}
+	outside := filepath.Join(t.TempDir(), "victim.jsonl")
+	must(t, os.WriteFile(outside, []byte("{}\n"), 0o600))
+	for _, id := range []string{"../../" + strings.TrimSuffix(outside, ".jsonl"), "/etc/passwd", "a/b", "..", ".hidden"} {
+		if _, _, err := openSession(cfg, id); err == nil || !strings.Contains(err.Error(), "bad session id") {
+			t.Errorf("%q: %v", id, err)
+		}
+	}
+	if b, _ := os.ReadFile(outside); string(b) != "{}\n" {
+		t.Fatal("a path-shaped id touched a file outside the sessions dir")
+	}
+	if _, err := sessionPath("/d", "20260913-083314-7d3384-sub1"); err != nil {
+		t.Fatal(err)
+	}
+}

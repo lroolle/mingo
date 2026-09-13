@@ -442,3 +442,18 @@ func TestFenceTimeoutKillsTree(t *testing.T) {
 		t.Fatal("the fenced tree outlived its timeout")
 	}
 }
+
+// A command that exits 0 while a grandchild still holds its stdout (a
+// server it started, a backgrounded job) is a success with its output,
+// not an error that hides the output.
+func TestRunKeepsOutputWhenAGrandchildHoldsThePipe(t *testing.T) {
+	sb, root := newTestSandbox(t, ModeFull)
+	start := time.Now()
+	out, code, err := sb.Run(context.Background(), "sleep 20 & echo started; exit 0", root, 15*time.Second, execMaxBytes)
+	if err != nil || code != 0 || !strings.Contains(out, "started") {
+		t.Fatalf("code=%d err=%v out=%q", code, err, out)
+	}
+	if time.Since(start) > 6*time.Second {
+		t.Fatal("wait delay did not cut the pipe wait short")
+	}
+}

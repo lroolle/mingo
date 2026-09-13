@@ -236,7 +236,7 @@ Ctrl-C cancels the running turn.
 
 ## Verify
 
-    make race      # go test -race: 71 tests
+    make race      # go test -race: 76 tests
     make bench     # go benchmarks of the paths the loop runs every round
     make eval      # live tasks against a real model, spends requests
 

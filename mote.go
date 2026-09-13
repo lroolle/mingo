@@ -1041,6 +1041,12 @@ func (s *Sandbox) Run(ctx context.Context, command, dir string, timeout time.Dur
 	if errors.As(err, &ee) {
 		return out, ee.ExitCode(), nil
 	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The command exited 0 but a grandchild still holds its stdout
+		// (a server it started, a backgrounded job). The output it
+		// produced is real and the exit was a success.
+		return out, 0, nil
+	}
 	return out, 0, err
 }
 
@@ -2048,16 +2054,8 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 			}
 			return reply.Content, nil
 		}
-		if reply.Finish == "length" {
-			// The completion was cut by the token cap, so the arguments are
-			// almost certainly truncated JSON. Running them would act on a
-			// guess; refusing tells the model what happened.
-			if err := a.closeBatch(reply.ToolCalls, "error: the reply hit the token cap before the call was complete; not executed. Make smaller calls or raise -max-tokens"); err != nil {
-				return "", err
-			}
-			a.ui.Note("reply truncated at the token cap; tool calls not run")
-			continue
-		}
+		// The budget check comes first: a model that hits the token cap on
+		// every reply must still run out of rounds.
 		if round >= a.cfg.MaxRounds {
 			// The budget is terminal. The model may explain why it stopped;
 			// it does not decide whether it stops. One last request without
@@ -2077,6 +2075,16 @@ func (a *Agent) Turn(ctx context.Context, user string) (string, error) {
 				return "", err
 			}
 			return report.Content, fmt.Errorf("%w: %d tool rounds", errBudget, a.cfg.MaxRounds)
+		}
+		if reply.Finish == "length" {
+			// The completion was cut by the token cap, so the arguments are
+			// almost certainly truncated JSON. Running them would act on a
+			// guess; refusing tells the model what happened.
+			if err := a.closeBatch(reply.ToolCalls, "error: the reply hit the token cap before the call was complete; not executed. Make smaller calls or raise -max-tokens"); err != nil {
+				return "", err
+			}
+			a.ui.Note("reply truncated at the token cap; tool calls not run")
+			continue
 		}
 		for i, call := range reply.ToolCalls {
 			key := call.Function.Name + "\x00" + call.Function.Arguments
@@ -2151,17 +2159,20 @@ func (a *Agent) Compact(ctx context.Context) error {
 		{Role: "assistant", Content: "Understood. Continuing from the summary.", ReasoningContent: new(string)},
 	}
 	fresh = append(fresh, pending...)
+	// Commit: the new log is written in full before memory changes, so a
+	// disk error here leaves the old transcript in memory and the old
+	// file intact on disk.
 	if a.session != nil {
 		if err := a.session.Rotate(); err != nil {
 			return err
 		}
-	}
-	a.msgs, a.last = nil, Usage{}
-	for _, m := range fresh {
-		if err := a.append(m); err != nil {
-			return err
+		for _, m := range fresh {
+			if err := a.session.Append(m); err != nil {
+				return fmt.Errorf("session: %w", err)
+			}
 		}
 	}
+	a.msgs, a.last = fresh, Usage{}
 	return nil
 }
 
@@ -2330,7 +2341,10 @@ func openSession(cfg *Config, resume string) (*Session, []Message, error) {
 			return nil, nil, err
 		}
 	}
-	path := filepath.Join(dir, id+".jsonl")
+	path, err := sessionPath(dir, id)
+	if err != nil {
+		return nil, nil, err
+	}
 	msgs, err := loadSession(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resume: %w", err)
@@ -2382,6 +2396,16 @@ func newSession(dir string, meta map[string]any) (*Session, error) {
 		return s, nil
 	}
 	return nil, errors.New("could not create a session file")
+}
+
+// sessionPath maps an id to its file. An id is a bare name: one with a
+// separator or a dot-dot would open a file outside the sessions dir for
+// append, so it is refused.
+func sessionPath(dir, id string) (string, error) {
+	if id == "" || id != filepath.Base(id) || strings.Contains(id, "..") || strings.HasPrefix(id, ".") {
+		return "", fmt.Errorf("bad session id %q", id)
+	}
+	return filepath.Join(dir, id+".jsonl"), nil
 }
 
 // lastSession is the newest top-level session in dir by id, which sorts by
@@ -2461,15 +2485,15 @@ func loadSession(path string) ([]Message, error) {
 // and are repaired the same way every time.
 func repairHistory(msgs []Message) (out []Message, tail []Message) {
 	pending := map[string]bool{}
-	var order []string
+	var order []string // ids of the current batch, in call order; ids repeat across batches (call_0, call_1 ...)
 	closeBatch := func() []Message {
 		var closed []Message
 		for _, id := range order {
 			if pending[id] {
 				closed = append(closed, Message{Role: "tool", ToolCallID: id, Content: interruptedResult})
+				delete(pending, id)
 			}
 		}
-		pending = map[string]bool{}
 		order = nil
 		return closed
 	}
@@ -2486,10 +2510,13 @@ func repairHistory(msgs []Message) (out []Message, tail []Message) {
 			out = append(out, closeBatch()...)
 		}
 		out = append(out, m)
+		order = nil
 		if m.Role == "assistant" {
 			for _, c := range m.ToolCalls {
+				if !pending[c.ID] {
+					order = append(order, c.ID)
+				}
 				pending[c.ID] = true
-				order = append(order, c.ID)
 			}
 		}
 	}
@@ -2873,7 +2900,11 @@ func run(args []string) error {
 				return err
 			}
 		}
-		msgs, err := loadSession(filepath.Join(sessionDir(cfg), id+".jsonl"))
+		path, err := sessionPath(sessionDir(cfg), id)
+		if err != nil {
+			return err
+		}
+		msgs, err := loadSession(path)
 		if err != nil {
 			return err
 		}
