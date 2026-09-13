@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>min.go: a small agent runtime in one Go file</title>
+<meta name="description" content="min.go: minimize machinery, not capability. A tool loop, a sandbox that says what it enforces, and a session log that survives interruption, in one Go file.">
+<meta property="og:title" content="min.go">
+<meta property="og:description" content="A small agent runtime in one Go file. Small enough to understand. Built to do real work.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://lroolle.github.io/min.go/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: light-dark(#f6f1e6, #15130f);
+    --ink: light-dark(#1d1a16, #ece6d8);
+    --ink-soft: light-dark(#6d675c, #a49d8f);
+    --line: light-dark(#2a2621, #d9d2c2);
+    --red: light-dark(#c8432b, #ff7a5c);
+    --green: light-dark(#2f7d4f, #6fd39a);
+    --card: light-dark(#fffdf7, #1d1a15);
+    --hand: "Caveat", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.55;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(0,0,0,.025), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(0,0,0,.03), transparent 40%),
+      var(--paper);
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+  a { color: inherit; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  a:hover { color: var(--red); }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .wordmark { font-family: var(--hand); font-size: 64px; font-weight: 700; line-height: 1; letter-spacing: -1px; margin: 0; position: relative; }
+  .wordmark .go { color: var(--red); }
+  .wordmark u { text-decoration: none; position: relative; }
+  .wordmark u::after {
+    content: ""; position: absolute; left: -2px; right: -2px; bottom: -4px; height: 8px;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'><path d='M1 5 C 20 2, 40 7, 60 4 S 100 2, 119 5' fill='none' stroke='%23c8432b' stroke-width='2.2' stroke-linecap='round'/></svg>") no-repeat center / 100% 100%;
+  }
+  nav { font-size: 13px; color: var(--ink-soft); display: flex; gap: 18px; }
+  .tag { font-family: var(--hand); font-size: 30px; font-weight: 500; margin: 6px 0 0; color: var(--ink); }
+  .tag small { display: block; font-size: 22px; color: var(--ink-soft); }
+
+  /* the stage */
+  .stage { position: relative; margin: 26px 0 8px; border: 2px solid var(--line); border-radius: 6px; background: var(--card); overflow: hidden;
+    filter: url(#wobble); }
+  .stage svg { display: block; width: 100%; height: auto; }
+  .stage text { font-family: var(--mono); font-size: 13px; fill: var(--ink); }
+  .stage .hand { font-family: var(--hand); font-size: 22px; font-weight: 700; }
+  .stage .soft { fill: var(--ink-soft); font-size: 12px; }
+  .ink { stroke: var(--line); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .ink.thin { stroke-width: 1.4; }
+  .ink.dash { stroke-dasharray: 6 7; }
+  .station circle { fill: var(--card); }
+  .station.done circle { fill: light-dark(#e6f4ea, #1f3a2a); }
+  .station.on circle { fill: light-dark(#fdebe6, #3a2119); stroke: var(--red); }
+  .station .tick { stroke: var(--green); stroke-width: 3; stroke-dasharray: 40; stroke-dashoffset: 40; transition: stroke-dashoffset .45s ease-out .15s; }
+  .station.done .tick { stroke-dashoffset: 0; }
+  .fence { stroke: var(--line); }
+  #minny { transition: none; }
+  #minny .body { fill: var(--ink); }
+  #minny .eye { fill: var(--paper); }
+  #minny .cap { fill: var(--red); }
+  .bob { animation: bob 1.4s ease-in-out infinite; transform-origin: center; }
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+  .receipt { opacity: 0; transform: translate(0, 10px) rotate(-3deg); transition: opacity .35s, transform .35s; }
+  .receipt.show { opacity: 1; transform: translate(0,0) rotate(-3deg); }
+  .receipt rect { fill: light-dark(#fff8dc, #2b2716); stroke: var(--line); stroke-width: 1.6; }
+  .receipt text { font-size: 12px; }
+  .cut { opacity: 0; transition: opacity .3s; }
+  .cut.show { opacity: 1; }
+  .tape text { font-size: 11px; fill: var(--ink-soft); }
+  .tape .new { fill: var(--ink); }
+  .blink { animation: blink 1s steps(2) infinite; }
+  @keyframes blink { to { opacity: 0 } }
+  @media (prefers-reduced-motion: reduce) { .bob, .blink { animation: none } .station .tick { transition: none } }
+
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--ink-soft); margin-bottom: 40px; }
+  .controls kbd { font-family: var(--mono); border: 1.5px solid var(--line); border-bottom-width: 3px; border-radius: 5px; padding: 1px 7px; color: var(--ink); background: var(--card); }
+  .controls button { font: inherit; font-family: var(--hand); font-size: 20px; font-weight: 700; color: var(--ink); background: var(--card); border: 2px solid var(--line); border-radius: 999px; padding: 2px 16px; cursor: pointer; filter: url(#wobble); }
+  .controls button:hover { color: var(--red); border-color: var(--red); }
+  .controls .sp { flex: 1; }
+
+  h2 { font-family: var(--hand); font-size: 36px; font-weight: 700; margin: 44px 0 10px; }
+  h2 .n { color: var(--red); font-size: 24px; margin-right: 8px; }
+  p { max-width: 68ch; margin: 8px 0; }
+  .three { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin-top: 16px; }
+  .card { border: 2px solid var(--line); border-radius: 6px; padding: 16px 18px; background: var(--card); filter: url(#wobble); }
+  .card h3 { font-family: var(--hand); font-size: 28px; margin: 0 0 6px; }
+  .card p { font-size: 14px; color: var(--ink-soft); margin: 0; }
+  .card svg { width: 44px; height: 44px; float: right; margin: -4px -4px 0 8px; }
+  pre { background: var(--card); border: 2px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.5; filter: url(#wobble); }
+  pre b { color: var(--red); font-weight: 600; }
+  pre i { color: var(--ink-soft); font-style: normal; }
+  ul.rules { list-style: none; padding: 0; margin: 12px 0; max-width: 72ch; }
+  ul.rules li { position: relative; padding-left: 28px; margin: 8px 0; }
+  ul.rules li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 14px; height: 10px;
+    border-left: 2.5px solid var(--green); border-bottom: 2.5px solid var(--green); transform: rotate(-48deg) skewX(-6deg); }
+  table { border-collapse: collapse; font-size: 13.5px; margin: 12px 0; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1.5px dashed var(--line); vertical-align: top; }
+  th { font-family: var(--hand); font-size: 20px; font-weight: 700; }
+  footer { margin-top: 60px; color: var(--ink-soft); font-size: 13px; display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; }
+  footer .hand { font-family: var(--hand); font-size: 22px; color: var(--ink); }
+  @media (max-width: 600px) { .wordmark { font-size: 52px } .tag { font-size: 24px } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="wobble" x="-2%" y="-2%" width="104%" height="104%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="7" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="2.2" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+<main>
+  <header>
+    <div>
+      <h1 class="wordmark"><u>min</u><span class="go">.go</span></h1>
+      <p class="tag">A small agent runtime in one Go file.<small>Small enough to understand. Built to do real work.</small></p>
+    </div>
+    <nav>
+      <a href="https://github.com/lroolle/min.go">github</a>
+      <a href="https://github.com/lroolle/min.go#readme">readme</a>
+      <a href="https://github.com/lroolle/min.go/releases">releases</a>
+    </nav>
+  </header>
+
+  <div class="stage" id="stage" aria-label="an animated sketch of the min loop: a tiny agent moves from read to edit to exec inside a sandbox fence and comes back with a receipt">
+    <svg viewBox="0 0 860 380" role="img">
+      <!-- the fence: the sandbox -->
+      <path class="ink fence" d="M40 60 L820 60 L820 300 L40 300 Z"/>
+      <g class="ink thin">
+        <line x1="40" y1="60" x2="30" y2="50"/><line x1="820" y1="60" x2="830" y2="50"/>
+        <line x1="40" y1="300" x2="30" y2="310"/><line x1="820" y1="300" x2="830" y2="310"/>
+      </g>
+      <text x="52" y="48" class="soft">sandbox: workspace   fence: bwrap   root: /work/app</text>
+      <text x="808" y="48" class="soft" text-anchor="end" id="rounds">round 0 / 60</text>
+
+      <!-- the path -->
+      <path id="track" class="ink dash thin" d="M110 190 C 220 120, 300 120, 370 190 S 520 260, 620 190 S 730 120, 760 190"/>
+      <!-- the loop back: exec to read -->
+      <path id="loop" class="ink dash thin" d="M620 190 C 560 290, 200 290, 110 190"/>
+      <path class="ink thin" d="M118 206 L110 190 L126 186"/>
+
+      <!-- stations -->
+      <g class="station" id="s-read" transform="translate(110 190)">
+        <circle r="26" class="ink"/>
+        <text y="5" text-anchor="middle">read</text>
+        <path class="ink tick" d="M-10 2 L-3 9 L11 -7"/>
+        <text y="52" text-anchor="middle" class="soft">numbered lines</text>
+      </g>
+      <g class="station" id="s-edit" transform="translate(370 190)">
+        <circle r="26" class="ink"/>
+        <text y="5" text-anchor="middle">edit</text>
+        <path class="ink tick" d="M-10 2 L-3 9 L11 -7"/>
+        <text y="52" text-anchor="middle" class="soft">one unique block</text>
+      </g>
+      <g class="station" id="s-exec" transform="translate(620 190)">
+        <circle r="26" class="ink"/>
+        <text y="5" text-anchor="middle">exec</text>
+        <path class="ink tick" d="M-10 2 L-3 9 L11 -7"/>
+        <text y="52" text-anchor="middle" class="soft">go vet, go test</text>
+      </g>
+      <g class="station" id="s-answer" transform="translate(760 190)">
+        <circle r="26" class="ink"/>
+        <text y="5" text-anchor="middle">say</text>
+        <path class="ink tick" d="M-10 2 L-3 9 L11 -7"/>
+        <text y="52" text-anchor="middle" class="soft">once, verified</text>
+      </g>
+
+      <!-- the little min -->
+      <g id="minny" transform="translate(110 148)">
+        <g class="bob">
+          <circle class="body" r="11"/>
+          <circle class="eye" cx="-4" cy="-2" r="2"/>
+          <circle class="eye" cx="4" cy="-2" r="2"/>
+          <path d="M-4 4 Q0 8 4 4" stroke="var(--paper)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <path class="cap" d="M-9 -8 Q0 -18 9 -8 Z"/>
+        </g>
+        <text y="-22" text-anchor="middle" class="hand" id="say">hi</text>
+      </g>
+
+      <!-- receipt -->
+      <g transform="translate(600 88)">
+        <g class="receipt" id="receipt">
+          <rect x="0" y="0" width="200" height="54" rx="3"/>
+          <text x="12" y="20" class="hand" style="font-size:18px">receipt</text>
+          <text x="12" y="42" id="receipt-line">wrote add.go</text>
+        </g>
+      </g>
+
+      <!-- the cancel stamp -->
+      <g class="cut" id="cut" transform="translate(300 96) rotate(-6)">
+        <rect x="0" y="0" width="250" height="34" rx="3" fill="none" stroke="var(--red)" stroke-width="2"/>
+        <text x="125" y="23" text-anchor="middle" style="fill:var(--red)">batch closed: not executed</text>
+      </g>
+
+      <!-- the session tape -->
+      <g class="tape" transform="translate(52 330)">
+        <text x="0" y="0" class="soft">.min/sessions/20260913-081502-9c1a2f.jsonl  (fsync after every line)</text>
+        <text x="0" y="22" id="tape-line">{"role":"user","content":"Add has a bug. Fix it."}</text>
+        <text x="806" y="22" text-anchor="end" class="blink">_</text>
+      </g>
+    </svg>
+  </div>
+  <div class="controls">
+    <button id="step" type="button">step</button>
+    <button id="play" type="button">play</button>
+    <button id="cancel" type="button">ctrl-c</button>
+    <span><kbd>space</kbd> step &nbsp; <kbd>enter</kbd> play &nbsp; <kbd>esc</kbd> cancel the turn</span>
+    <span class="sp"></span>
+    <span id="status">one turn: read, edit, exec, then say it once.</span>
+  </div>
+
+  <h2><span class="n">1</span>Minimize machinery, not capability.</h2>
+  <p>min is a tool loop over any OpenAI-compatible endpoint: a llama-server on your own machine, DeepSeek, OpenRouter, or OpenAI's Responses API. It is built so that a 4B model on a laptop CPU can deliver, not demo. The harness checks what the model claims, refuses what it cannot verify, closes every loop the model leaves open, and keeps the transcript small.</p>
+  <div class="three">
+    <div class="card">
+      <svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 22 a14 14 0 1 1 14 14"/><path d="M22 36 l-5 -5 M22 36 l5 -5"/></svg>
+      <h3>the loop</h3>
+      <p>Tool rounds until the model answers without a tool. Budgets are terminal. A cut reply runs nothing. A batch is judged whole before any of it runs.</p>
+    </div>
+    <div class="card">
+      <svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="10" width="32" height="26" rx="2"/><path d="M6 18 h32 M14 10 v26 M22 10 v26 M30 10 v26"/></svg>
+      <h3>the sandbox</h3>
+      <p>An os.Root jail for files, an allowlist that splits commands the way sh does, and an OS fence (bwrap, seatbelt) that the banner names. Asks fail closed.</p>
+    </div>
+    <div class="card">
+      <svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 6 h18 l8 8 v24 h-26 z"/><path d="M28 6 v8 h8 M15 22 h14 M15 28 h14 M15 16 h6"/></svg>
+      <h3>the session</h3>
+      <p>Append-only JSONL, fsynced per line, locked while open. A torn tail is repaired on disk before anything is appended. Resume, and every open call is closed.</p>
+    </div>
+  </div>
+
+  <h2><span class="n">2</span>Run it.</h2>
+<pre><i># build, then talk to a model</i>
+go build -o min . &amp;&amp; DEEPSEEK_API_KEY=... ./min
+
+<i># a 4B model on this machine, no key</i>
+./min -provider local
+
+<i># one key, a few hundred models</i>
+OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
+
+<i># headless: the answer on stdout, the outcome in the exit code</i>
+./min -json -p "Add has a bug. Fix it, verify with go vet, and report."
+<b>{"outcome":"done","written":["add.go"],"requests":5, ...}</b></pre>
+
+  <h2><span class="n">3</span>What the loop guarantees.</h2>
+  <p>Properties of the program, not of the model's manners. Each has a test that tries to break it.</p>
+  <ul class="rules">
+    <li>No tool runs from an incomplete reply, and a batch with a missing or duplicate id runs nothing.</li>
+    <li>Budgets are terminal: at the round cap the open batch is closed unexecuted and the turn ends with exit 3.</li>
+    <li>Every batch is closed, so a cancelled turn never earns a 400 on the next message.</li>
+    <li>A repeated failing call is not run again.</li>
+    <li>Missing arguments are not empty ones: <code>write</code> without content cannot empty a file.</li>
+    <li>Compaction is a transaction, and it shrinks, checked: a cut, empty or growing summary is refused.</li>
+    <li>A retry never prints twice.</li>
+    <li>The receipt says what changed on disk. A model that says "fixed" over an empty receipt is caught on the spot.</li>
+  </ul>
+
+  <h2><span class="n">4</span>Providers.</h2>
+  <table>
+    <tr><th>provider</th><th>wire</th><th>default model</th><th>thinking</th></tr>
+    <tr><td>deepseek</td><td>chat completions</td><td>deepseek-v4-flash</td><td>reasoning_content replayed, as the API requires</td></tr>
+    <tr><td>openai</td><td>Responses API</td><td>gpt-6-astra</td><td>encrypted reasoning items replayed; nothing stored server-side</td></tr>
+    <tr><td>openrouter</td><td>chat completions</td><td>deepseek/deepseek-v4-flash</td><td>unified reasoning switch; any model id</td></tr>
+    <tr><td>local</td><td>chat completions</td><td>whatever is loaded</td><td>chat template switch; context read from /props; 4096-token cap</td></tr>
+  </table>
+
+  <footer>
+    <span class="hand">min.go</span>
+    <a href="https://github.com/lroolle/min.go">source</a>
+    <a href="https://github.com/lroolle/min.go/blob/main/README.md">the long version</a>
+    <span>MIT. One file, standard library only, POSIX.</span>
+  </footer>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const minny = $('minny'), say = $('say'), status = $('status'), rounds = $('rounds');
+  const track = $('track'), loop = $('loop');
+  const stations = ['s-read', 's-edit', 's-exec', 's-answer'].map($);
+  const receipt = $('receipt'), cut = $('cut'), tape = $('tape-line');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // stations sit on the track at these fractions of its length
+  const stops = [0, 0.415, 0.815, 1];
+  const words = ['reading add.go', 'a - b, so a + b', 'go vet, go test', 'fixed, verified'];
+  const lines = [
+    '{"role":"assistant","tool_calls":[{"id":"call_0","function":{"name":"read","arguments":"{\\"path\\":\\"add.go\\"}"}}]}',
+    '{"role":"assistant","tool_calls":[{"id":"call_1","function":{"name":"edit","arguments":"{\\"path\\":\\"add.go\\",...}"}}]}',
+    '{"role":"assistant","tool_calls":[{"id":"call_2","function":{"name":"exec","arguments":"{\\"cmd\\":\\"go vet ./... && go test ./...\\"}"}}]}',
+    '{"role":"assistant","content":"Fixed: Add returned a - b; it now returns a + b. Verified."}',
+  ];
+  let at = 0, busy = false, playing = false, round = 0, timer = null, queued = 0;
+
+  const pointAt = (path, t) => path.getPointAtLength(t * path.getTotalLength());
+  // the min walks a hand's width above the track, so the station labels stay readable
+  const place = (p) => minny.setAttribute('transform', `translate(${p.x.toFixed(1)} ${(p.y - 42).toFixed(1)})`);
+  const ease = (t) => t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+  function travel(path, from, to, ms) {
+    return new Promise((done) => {
+      if (reduced) { place(pointAt(path, to)); return done(); }
+      const t0 = performance.now();
+      const frame = (now) => {
+        const k = Math.min(1, (now - t0) / ms);
+        place(pointAt(path, from + (to - from) * ease(k)));
+        k < 1 ? requestAnimationFrame(frame) : done();
+      };
+      requestAnimationFrame(frame);
+    });
+  }
+
+  function reset() {
+    stations.forEach((s) => s.classList.remove('done', 'on'));
+    receipt.classList.remove('show'); cut.classList.remove('show');
+    at = 0; round = 0; rounds.textContent = 'round 0 / 60';
+    say.textContent = 'hi';
+    tape.textContent = '{"role":"user","content":"Add has a bug. Fix it."}';
+    tape.classList.remove('new');
+  }
+
+  async function step() {
+    if (busy) { queued = Math.min(queued + 1, 3); return; } // a key pressed mid-hop is not lost
+    busy = true;
+    if (at >= stations.length) {
+      // a new turn: walk the loop back home
+      say.textContent = 'again?';
+      await travel(loop, 0, 1, 900);
+      reset();
+      busy = false;
+      if (queued > 0) { queued--; step(); }
+      return;
+    }
+    const s = stations[at];
+    stations.forEach((x) => x.classList.remove('on'));
+    if (at > 0) await travel(track, stops[at - 1], stops[at], 700);
+    s.classList.add('on');
+    say.textContent = words[at];
+    tape.textContent = lines[at]; tape.classList.add('new');
+    if (at < 3) { round++; rounds.textContent = `round ${round} / 60`; }
+    status.textContent = ['read before edit: the toolbox remembers the hash.',
+      'edit refuses if the file changed since the read.',
+      'exec inside the fence, own process group, output bounded.',
+      'the receipt: wrote add.go. Not the prose, the disk.'][at];
+    await new Promise((r) => setTimeout(r, reduced ? 0 : 450));
+    s.classList.remove('on'); s.classList.add('done');
+    if (at === 3) receipt.classList.add('show');
+    at++;
+    busy = false;
+    if (queued > 0) { queued--; step(); }
+  }
+
+  function play() {
+    if (playing) { playing = false; clearInterval(timer); $('play').textContent = 'play'; return; }
+    playing = true; $('play').textContent = 'pause';
+    timer = setInterval(() => { if (!busy) step(); }, 1300);
+  }
+
+  async function cancel() {
+    if (busy && !playing) return;
+    if (playing) play();
+    cut.classList.add('show');
+    say.textContent = 'ok, closing';
+    status.textContent = 'ctrl-c: the calls that did not run are answered "not executed". exit 130.';
+    tape.textContent = '{"role":"tool","tool_call_id":"call_2","content":"error: cancelled by the user before this call ran; not executed"}';
+    stations.forEach((x) => x.classList.remove('on'));
+    setTimeout(() => cut.classList.remove('show'), 1800);
+    busy = true;
+    await travel(at < 3 ? track : loop, at < 3 ? stops[Math.max(0, at - 1)] : 0, at < 3 ? 0 : 1, 900).catch(() => {});
+    busy = false;
+    reset();
+  }
+
+  $('step').onclick = step; $('play').onclick = play; $('cancel').onclick = cancel;
+  addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
+    if (e.key === ' ') { e.preventDefault(); step(); }
+    else if (e.key === 'Enter') { e.preventDefault(); play(); }
+    else if (e.key === 'Escape') { cancel(); }
+  });
+  // travel(track, x, 0) walks backwards: getPointAtLength is fine with from > to
+  place(pointAt(track, 0));
+})();
+</script>
+</body>
+</html>

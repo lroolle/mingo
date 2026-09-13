@@ -23,8 +23,23 @@ replaces the generic invocation when a task needs more than one run.
 | rename-symbol | one change carried across two files, verified by a build | workspace |
 | resume | a run cut by a request cap is resumed and finished in the same session | workspace |
 
-Every check reads the file system and the JSON outcome. A model that says
-"fixed" without editing fails `fix-add` because `add.go` still subtracts
-and the result's `written` list is empty.
+Every check judges the work, not the model's account of it, and not the
+runtime's either: `fix-add` and `resume` drop a hidden test into the root
+and call the functions; `add-test` runs the generated test against the
+correct code and then against two mutants (a `Reverse` that returns its
+input, and one that reverses bytes), and a test that passes a mutant is
+vacuous; `report-only` hashes the tree at setup into a manifest beside
+the root, where the model cannot reach, and compares afterwards;
+`rename-symbol` builds and runs the program; `resume` refuses a first run
+that did not end in exit 3, because a run that finished has nothing to
+resume. The runner's own result and log live beside the root too
+(`<root>.result.json`, `<root>.stderr.log`), so the root is exactly what
+setup made plus what the model did.
+
+A second review found the previous graders accepting a comment that said
+`return a + b` over a body that subtracted, an empty `TestReverse`, and a
+receipt that said nothing was written over a tree that had changed. The
+runtime's `outcome: done` means the model answered within its budgets; the
+grader is what turns that into pass or fail.
 
 Results land in `eval/results/*.jsonl` (ignored by git), one line per run.
