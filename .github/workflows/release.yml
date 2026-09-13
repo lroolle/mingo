@@ -12,7 +12,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./...
+      # The suite demands a real fence on CI (TestFenceIsRealOnCI), so the
+      # release job installs bubblewrap exactly as ci.yml does.
+      - name: install bubblewrap
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: go test -race -count=1 ./...
       - name: build
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
