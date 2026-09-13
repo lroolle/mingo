@@ -1,5 +1,5 @@
 #!/bin/sh
-# Live evaluation of min against a real model. Every task under eval/tasks
+# Live evaluation of mingo against a real model. Every task under eval/tasks
 # is set up in a fresh directory, run headless with -json, and judged by
 # its own check.sh. Spends real requests: N runs per task, PROVIDER picks
 # the backend. Results go to eval/results/<timestamp>.jsonl.
@@ -11,15 +11,15 @@
 #   setup.sh    creates the project in $1 (the fresh root)
 #   prompt.txt  the user prompt
 #   check.sh    exits 0 when $1 (the root) shows the task was done;
-#               $2 is the JSON result min printed
-#   args        optional extra flags for min (one line)
-#   run.sh      optional: replaces the generic run; gets MIN, DIR, PROVIDER
+#               $2 is the JSON result mingo printed
+#   args        optional extra flags for mingo (one line)
+#   run.sh      optional: replaces the generic run; gets MINGO, DIR, PROVIDER
 set -u
 cd "$(dirname "$0")/.."
-MIN=${MIN:-./min}
+MINGO=${MINGO:-./mingo}
 PROVIDER=${PROVIDER:-local}
 N=${N:-1}
-export MIN PROVIDER
+export MINGO PROVIDER
 mkdir -p eval/results
 out="eval/results/$(date -u +%Y%m%dT%H%M%SZ)-$PROVIDER.jsonl"
 tasks=${1:-$(ls eval/tasks)}
@@ -40,7 +40,7 @@ for task in $tasks; do
       DIR="$dir" sh "$tdir/run.sh" > "$dir.result.json" 2> "$dir.stderr.log"; code=$?
     else
       # shellcheck disable=SC2086
-      "$MIN" -provider "$PROVIDER" -json -quiet -cwd "$dir" $args -p "$(cat "$tdir/prompt.txt")" > "$dir.result.json" 2> "$dir.stderr.log"; code=$?
+      "$MINGO" -provider "$PROVIDER" -json -quiet -cwd "$dir" $args -p "$(cat "$tdir/prompt.txt")" > "$dir.result.json" 2> "$dir.stderr.log"; code=$?
     fi
     wall=$(( $(date +%s) - start ))
     res=$(cat "$dir.result.json")

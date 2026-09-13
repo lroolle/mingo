@@ -119,7 +119,7 @@ func TestReadWriteEditRules(t *testing.T) {
 // is never truncated, and nothing is left behind.
 func TestAtomicWriteTempIsPrivate(t *testing.T) {
 	tb, root, _ := newToolboxWithFiles(t, ModeWorkspace)
-	bystander := filepath.Join(root, "t.txt.min-tmp")
+	bystander := filepath.Join(root, "t.txt.mingo-tmp")
 	must(t, os.WriteFile(bystander, []byte("mine"), 0o600))
 	var wg sync.WaitGroup
 	errs := make(chan error, 16)
@@ -151,7 +151,7 @@ func TestAtomicWriteTempIsPrivate(t *testing.T) {
 	// random, and O_EXCL refuses an existing path anyway
 	victim := filepath.Join(root, "victim.txt")
 	must(t, os.WriteFile(victim, []byte("keep"), 0o600))
-	must(t, os.Symlink("victim.txt", filepath.Join(root, "u.txt.min-00000000.tmp")))
+	must(t, os.Symlink("victim.txt", filepath.Join(root, "u.txt.mingo-00000000.tmp")))
 	must(t, tb.writeAtomic("u.txt", []byte("new")))
 	if b, _ := os.ReadFile(victim); string(b) != "keep" {
 		t.Fatalf("victim overwritten through a temp-name symlink: %q", b)

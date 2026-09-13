@@ -1,10 +1,11 @@
-# min.go
+# mingo
 
-A small agent runtime in one Go file.
+A small agent runtime in one Go file. Say it min-go: minimize machinery,
+not capability.
 
 Small enough to understand. Built to do real work.
 
-Minimize machinery, not capability: min is a tool loop over any
+Minimize machinery, not capability: mingo is a tool loop over any
 OpenAI-compatible endpoint (a llama-server on this machine, DeepSeek,
 OpenRouter, OpenAI's Responses API), a sandbox that says exactly what it
 enforces, and a session log that survives interruption. It is built so
@@ -12,20 +13,20 @@ that a 4B model on a laptop CPU can deliver, not demo: the harness checks
 what the model claims, refuses what it cannot verify, closes every loop
 the model leaves open, and keeps the transcript small.
 
-    go build -o min . && DEEPSEEK_API_KEY=... ./min
+    go build -o mingo . && DEEPSEEK_API_KEY=... ./mingo
 
 ```
-min: root=/work/app model=deepseek:deepseek-flash think=high sandbox=workspace fence=bwrap context=128000 session=20260913-081502-9c1a2f skills=1
+mingo: root=/work/app model=deepseek:deepseek-flash think=high sandbox=workspace fence=bwrap context=128000 session=20260913-081502-9c1a2f skills=1
 > Add has a bug. Fix it, verify, and tell me in two sentences.
 > exec: ls -la && find . -type f -name '*.go' | head -50
 > read: add.go
 > edit: add.go
 > exec: go vet ./... && go test ./...
 Fixed: Add returned a - b; it now returns a + b. Verified with go vet (clean) and go test (pass).
-min: wrote add.go
+mingo: wrote add.go
 ```
 
-Standard library only, POSIX, one core file (`min.go`), thick tests
+Standard library only, POSIX, one core file (`mingo.go`), thick tests
 around it.
 
 ## What is in the file
@@ -33,8 +34,8 @@ around it.
 | Piece | What it is |
 | --- | --- |
 | system prompt | short rules, the soul, the project's `AGENTS.md`, environment, skills catalog. A stable prefix, so a local server serves most of it from cache. `-show-prompt` prints it |
-| SOUL | voice and working values in markdown, layered: built-in default, then `~/.min/SOUL.md`, then `./.min/SOUL.md`. Later layers extend, never erase |
-| skills | markdown with `name` and `description` front matter under `.min/skills/<name>/SKILL.md`, `.min/skills/<name>.md`, or `~/.min/skills/`. The catalog sits in the prompt; the body loads through the `skill` tool when a task matches |
+| SOUL | voice and working values in markdown, layered: built-in default, then `~/.mingo/SOUL.md`, then `./.mingo/SOUL.md`. Later layers extend, never erase |
+| skills | markdown with `name` and `description` front matter under `.mingo/skills/<name>/SKILL.md`, `.mingo/skills/<name>.md`, or `~/.mingo/skills/`. The catalog sits in the prompt; the body loads through the `skill` tool when a task matches |
 | read | numbered lines, paged. Reading is what makes a file editable |
 | write | creates files and parents, atomically: a private temp file (random name, created exclusively) and a rename. Overwriting needs a prior read of the current content |
 | edit | replaces one unique block, with a trailing-whitespace-tolerant retry. Refuses if the file changed since it was read |
@@ -93,7 +94,7 @@ Three layers, each honest about what it covers:
 
 - **the jail**, for `read`, `write`, `edit` and `cwd`: every open goes
   through `os.Root`, so a path or symlink that leaves the root fails in
-  the kernel, not in a string check. `.min/` is off limits except
+  the kernel, not in a string check. `.mingo/` is off limits except
   `skills/`. Credential-shaped files (`.env*`, `*.pem`, `id_*`, `.ssh/`,
   `.aws/`, ...) are refused anywhere;
 - **the policy**, for `exec`: an allowlist of read-only tools (`ls`, `cat`,
@@ -137,7 +138,7 @@ commands for paths is theater and this code does not pretend otherwise.
 
 ## Sessions
 
-Every message is appended to `.min/sessions/<id>.jsonl` and fsynced as it
+Every message is appended to `.mingo/sessions/<id>.jsonl` and fsynced as it
 happens, mode 0600, ignored by a `.gitignore` the runtime writes itself. The
 id is a UTC timestamp plus a random suffix, created with `O_EXCL`, and the
 file is locked for as long as it is open, so two agents in one directory
@@ -178,7 +179,7 @@ else to stderr, and the exit code is the outcome:
 
 A job runner reads `outcome` and `written`, not the prose. `done` means
 the model answered within its budgets; it is the runtime's outcome, not a
-verification of the work. Verification is the job of whatever runs min:
+verification of the work. Verification is the job of whatever runs mingo:
 the graders under `eval/` are one example. `-quiet` silences reasoning
 and tool lines on stderr; notes and the receipt stay.
 
@@ -201,7 +202,7 @@ off, `include: reasoning.encrypted_content` so the model's own reasoning
 travels with the transcript, and typed stream events folded by the
 terminal one. OpenRouter is one key for a few hundred models; `-model`
 picks any id from `openrouter.ai/api/v1/models`, reasoning streams back in
-the delta's `reasoning` field. `MIN_BASE_URL` overrides any endpoint; https
+the delta's `reasoning` field. `MINGO_BASE_URL` overrides any endpoint; https
 is required except on loopback, and loopback means `localhost` or a loopback
 IP literal, not a hostname that starts with `127.`.
 
@@ -212,7 +213,7 @@ Responses streams, are pinned by recorded streams under `testdata/streams/`.
 
 ## Local model
 
-Any OpenAI-compatible server on loopback works; min reads the context
+Any OpenAI-compatible server on loopback works; mingo reads the context
 window from `/props` so compaction fits the model actually loaded, and caps
 a reply at 4096 tokens because a llama-server has no cap of its own and a
 4B model that starts thinking in circles will otherwise fill its window in
@@ -224,7 +225,7 @@ through the vendor's llama.cpp fork, on a 10-core arm64 CPU with no GPU:
     cmake -B build -DLLAMA_CURL=ON && cmake --build build -j --target llama-server
     ./build/bin/llama-server -hf XHToken/Spark-X2.5-4B-GGUF:Q4_K_M \
       -c 32768 -fa on --jinja --cache-reuse 256 --parallel 1 --reasoning-format deepseek
-    ./min -provider local
+    ./mingo -provider local
 
 `make local` runs the same server from a downloaded GGUF and `make eval`
 runs the live tasks under `eval/`.
@@ -284,8 +285,9 @@ the person what actually changed.
 Slash commands: `/new /compact /cost /skills /soul /sandbox [mode] /quit`.
 Ctrl-C cancels the running turn.
 
-`go install github.com/lroolle/min.go@latest` works but names the binary
-`min.go`; `go build -o min .` or a release binary is nicer.
+`go install github.com/lroolle/mingo@latest` gives you a `mingo` binary;
+release binaries for linux and darwin, amd64 and arm64, are on the
+releases page.
 
 ## Verify
 
@@ -314,7 +316,7 @@ graders call the code, mutate it, and compare the tree, so a comment that
 says "fixed" or a test with no assertions does not pass. See
 `eval/README.md`.
 
-## Layout of min.go
+## Layout of mingo.go
 
 ```
 config     flags, env, providers, outcomes

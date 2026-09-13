@@ -1,6 +1,6 @@
 ---
 name: go-verify
-description: how to verify a change to min.go before reporting it done
+description: how to verify a change to mingo before reporting it done
 ---
 1. `gofmt -l .` must print nothing.
 2. `go vet ./...` must be clean.

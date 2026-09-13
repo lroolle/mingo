@@ -20,4 +20,4 @@ go vet ./... >/dev/null 2>&1 || exit 1
 go test ./... >/dev/null 2>&1 || exit 1
 rm -f zz_check_test.go
 grep -q '"outcome":"done"' "$2" || exit 1
-test "$(ls .min/sessions/*.jsonl | grep -vc sub)" -eq 1
+test "$(ls .mingo/sessions/*.jsonl | grep -vc sub)" -eq 1

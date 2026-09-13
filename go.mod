@@ -1,3 +1,3 @@
-module github.com/lroolle/min.go
+module github.com/lroolle/mingo
 
 go 1.26

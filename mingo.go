@@ -1,6 +1,6 @@
-// min: a small agent runtime in one Go file.
+// mingo: a small agent runtime in one Go file.
 //
-// Minimize machinery, not capability. min is a tool loop over any
+// Minimize machinery, not capability. mingo is a tool loop over any
 // OpenAI-compatible endpoint (a llama-server on this machine, DeepSeek,
 // OpenRouter, OpenAI's Responses API), a sandbox that says exactly what it
 // enforces, and a session log that survives interruption. It is built so
@@ -60,11 +60,11 @@ import (
 // ---------------------------------------------------------------------------
 
 const (
-	version = "0.2.0"
+	version = "0.3.0"
 	// runtimeDir is the per-project state directory. Its contents are off
 	// limits to every tool except the skills subtree, which is meant to be read.
-	runtimeDir = ".min"
-	envPrefix  = "MIN_"
+	runtimeDir = ".mingo"
+	envPrefix  = "MINGO_"
 )
 
 // A turn ends in one of a few outcomes besides success. They are sentinel
@@ -163,7 +163,7 @@ var providers = map[string]*Provider{
 		DefaultModel: "deepseek/deepseek-v4.1-flash",
 		Context:      128000,
 		MaxTokensKey: "max_tokens",
-		Headers:      map[string]string{"HTTP-Referer": "https://github.com/lroolle/min.go", "X-Title": "min"},
+		Headers:      map[string]string{"HTTP-Referer": "https://github.com/lroolle/mingo", "X-Title": "mingo"},
 		Levels:       []string{"low", "medium", "high", "xhigh", "max"}, // passed through; the model decides what it honours
 		Think: func(req map[string]any, level string) {
 			if level == "off" {
@@ -206,7 +206,7 @@ type Config struct {
 	MaxTokens  int
 	Context    int    // model context window in tokens, drives compaction; 0 = provider default
 	Root       string // sandbox root, absolute, symlinks resolved
-	Home       string // ~/.min
+	Home       string // ~/.mingo
 	Mode       Mode
 	NoNet      bool
 	Unfenced   bool   // accept exec with no OS fence even when a mode asked for one
@@ -224,7 +224,7 @@ type Config struct {
 }
 
 func parseConfig(args []string) (*Config, error) {
-	fs := flag.NewFlagSet("min", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mingo", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	cfg := &Config{}
 	var providerName, modeName, root string
@@ -251,8 +251,8 @@ func parseConfig(args []string) (*Config, error) {
 	fs.BoolVar(&cfg.Sessions, "sessions", false, "list sessions and exit")
 	fs.BoolVar(&cfg.Version, "version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "min %s: a small agent runtime in one Go file\n\n", version)
-		fmt.Fprintf(os.Stderr, "usage: min [flags] [-p \"prompt\"]\n\n")
+		fmt.Fprintf(os.Stderr, "mingo %s: a small agent runtime in one Go file\n\n", version)
+		fmt.Fprintf(os.Stderr, "usage: mingo [flags] [-p \"prompt\"]\n\n")
 		fs.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nenv: DEEPSEEK_API_KEY, OPENAI_API_KEY or OPENROUTER_API_KEY, %sBASE_URL, %sMODEL, %sPROVIDER, %sTHINK, %sSANDBOX, %sHOME\n",
 			envPrefix, envPrefix, envPrefix, envPrefix, envPrefix, envPrefix)
@@ -810,7 +810,7 @@ func assemble(r io.Reader, sink Sink) (*Reply, error) {
 	return reply, nil
 }
 
-// responsesEvent is the union of the Responses stream events min reads:
+// responsesEvent is the union of the Responses stream events mingo reads:
 // text and reasoning-summary deltas for liveness, and the terminal event
 // (completed, incomplete, failed), whose response carries the whole output
 // and the usage. The terminal event is authoritative: calls, items and
@@ -1083,7 +1083,7 @@ func readSoul(home, root string) string {
 // server serve most of it from its prompt cache.
 func buildSystemPrompt(cfg *Config, soul string, skills []Skill, sub bool) string {
 	var b strings.Builder
-	b.WriteString("You are min, an agent that works inside one directory with a small set of tools. ")
+	b.WriteString("You are mingo, an agent that works inside one directory with a small set of tools. ")
 	if sub {
 		b.WriteString("You are a sub-agent: finish the one task you were given and report back in plain text; nobody else sees your intermediate steps.\n\n")
 	} else {
@@ -1224,7 +1224,7 @@ func (s *Sandbox) Resolve(p string) (string, error) {
 	rel, _ := filepath.Rel(s.Root, real)
 	if rel == runtimeDir || strings.HasPrefix(rel, runtimeDir+string(filepath.Separator)) {
 		if !strings.HasPrefix(rel, filepath.Join(runtimeDir, "skills")) {
-			return "", fmt.Errorf("%s is min's own state and off limits", p)
+			return "", fmt.Errorf("%s is mingo's own state and off limits", p)
 		}
 	}
 	if secretRe.MatchString(filepath.ToSlash(real)) {
@@ -1427,7 +1427,7 @@ func scrubEnv(env []string) []string {
 		}
 		out = append(out, kv)
 	}
-	return append(out, "MIN=1")
+	return append(out, "MINGO=1")
 }
 
 // --- the fence
@@ -2038,7 +2038,7 @@ func (tb *Toolbox) writeAtomic(rel string, data []byte) error {
 		if _, err := rand.Read(r[:]); err != nil {
 			return err
 		}
-		tmp = rel + ".min-" + hex.EncodeToString(r[:]) + ".tmp"
+		tmp = rel + ".mingo-" + hex.EncodeToString(r[:]) + ".tmp"
 		var err error
 		f, err = tb.sb.fs.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 		if err == nil {
@@ -2755,7 +2755,7 @@ func agentTool(parent func() *Agent) *Tool {
 }
 
 // ---------------------------------------------------------------------------
-// session: one JSONL file per session under .min/sessions
+// session: one JSONL file per session under .mingo/sessions
 // ---------------------------------------------------------------------------
 
 // Session appends every message as it happens and fsyncs each one, so a
@@ -2791,7 +2791,7 @@ func openSession(cfg *Config, resume string) (*Session, []Message, error) {
 	if _, err := os.Stat(ignore); errors.Is(err, os.ErrNotExist) {
 		_ = os.WriteFile(ignore, []byte("sessions/\n"), 0o644)
 	}
-	meta := map[string]any{"min": version, "cwd": cfg.Root, "model": cfg.Model}
+	meta := map[string]any{"mingo": version, "cwd": cfg.Root, "model": cfg.Model}
 	if resume == "" {
 		s, err := newSession(dir, meta)
 		return s, nil, err
@@ -3330,7 +3330,7 @@ func (c *Console) Note(format string, a ...any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.endLine()
-	fmt.Fprintf(c.err, "%s%s\n", c.prefix, c.paint(cPink, "min: "+fmt.Sprintf(format, a...)))
+	fmt.Fprintf(c.err, "%s%s\n", c.prefix, c.paint(cPink, "mingo: "+fmt.Sprintf(format, a...)))
 }
 
 // Sub returns the UI a sub-agent streams into: same console, indented, quiet.
@@ -3390,7 +3390,7 @@ func readLines(r io.Reader) chan string {
 func main() {
 	err := run(os.Args[1:])
 	if err != nil && !errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintln(os.Stderr, "min:", err)
+		fmt.Fprintln(os.Stderr, "mingo:", err)
 	}
 	os.Exit(exitCode(err))
 }
@@ -3434,7 +3434,7 @@ func run(args []string) error {
 		return err
 	}
 	if cfg.Version {
-		fmt.Println("min", version)
+		fmt.Println("mingo", version)
 		return nil
 	}
 	if cfg.Sessions {

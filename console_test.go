@@ -35,7 +35,7 @@ func TestConsoleSplitsAnswerFromChatter(t *testing.T) {
 	if out.String() != "hello world\n" {
 		t.Fatalf("stdout: %q", out.String())
 	}
-	for _, want := range []string{"thinking", "> exec: ls", "3 lines, 12 bytes [exit 0]", "error: nope", "min: note 1"} {
+	for _, want := range []string{"thinking", "> exec: ls", "3 lines, 12 bytes [exit 0]", "error: nope", "mingo: note 1"} {
 		if !strings.Contains(errb.String(), want) {
 			t.Fatalf("stderr lacks %q:\n%s", want, errb.String())
 		}
@@ -61,7 +61,7 @@ func TestConsoleSubIndentsAndStaysOffStdout(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("a sub-agent must not write to stdout: %q", out.String())
 	}
-	if !strings.Contains(errb.String(), "  | child says\n  | more\n") || !strings.Contains(errb.String(), "  | min: n") {
+	if !strings.Contains(errb.String(), "  | child says\n  | more\n") || !strings.Contains(errb.String(), "  | mingo: n") {
 		t.Fatalf("sub output: %q", errb.String())
 	}
 }
@@ -150,7 +150,7 @@ func TestParseConfig(t *testing.T) {
 	if cfg.Model != "deepseek-flash" {
 		t.Fatalf("deepseek default model: %s", cfg.Model)
 	}
-	// a local server has no completion cap of its own; min gives it one,
+	// a local server has no completion cap of its own; mingo gives it one,
 	// and -max-tokens overrides it
 	lc, err := parseConfig([]string{"-provider", "local", "-cwd", t.TempDir()})
 	must(t, err)
@@ -168,7 +168,7 @@ func TestParseConfig(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "k")
 	orc, err := parseConfig([]string{"-provider", "openrouter", "-cwd", t.TempDir()})
 	must(t, err)
-	if orc.Model != "deepseek/deepseek-v4.1-flash" || orc.Provider.Headers["X-Title"] != "min" {
+	if orc.Model != "deepseek/deepseek-v4.1-flash" || orc.Provider.Headers["X-Title"] != "mingo" {
 		t.Fatalf("openrouter defaults: %+v", orc)
 	}
 	// explicit boundaries fail closed without a fence, -unfenced accepts

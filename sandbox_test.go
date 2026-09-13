@@ -202,7 +202,7 @@ func TestRunScrubsSecretsAndKillsTree(t *testing.T) {
 	if err != nil || code != 3 {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
-	if strings.Contains(out, "hunter2") || strings.Contains(out, envPrefix+"MODEL") || !strings.Contains(out, "MIN=1") {
+	if strings.Contains(out, "hunter2") || strings.Contains(out, envPrefix+"MODEL") || !strings.Contains(out, "MINGO=1") {
 		t.Fatalf("env not scrubbed:\n%s", out)
 	}
 	start := time.Now()
@@ -274,7 +274,7 @@ func TestScrubEnv(t *testing.T) {
 			t.Errorf("%s leaked: %s", bad, out)
 		}
 	}
-	for _, good := range []string{"PATH=/bin", "HOME=/h", "LANG=C", "MIN=1"} {
+	for _, good := range []string{"PATH=/bin", "HOME=/h", "LANG=C", "MINGO=1"} {
 		if !strings.Contains(out, good) {
 			t.Errorf("%s missing: %s", good, out)
 		}
@@ -398,7 +398,7 @@ func TestFenceWorkspaceWritesStayInRoot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "inside.txt")); err != nil {
 		t.Fatalf("file must exist on the host: %v", err)
 	}
-	probe := filepath.Join(userHome(), fmt.Sprintf(".min-fence-probe-%d", time.Now().UnixNano()))
+	probe := filepath.Join(userHome(), fmt.Sprintf(".mingo-fence-probe-%d", time.Now().UnixNano()))
 	defer os.Remove(probe)
 	_, code, err = sb.Run(context.Background(), "echo x > "+probe, root, 10*time.Second, execMaxBytes)
 	must(t, err)
@@ -425,7 +425,7 @@ func TestFenceReadOnlyRootCannotBeWritten(t *testing.T) {
 		t.Fatal("new.txt was created in a read-only root")
 	}
 	// reading still works, and so does a scratch write to tmp
-	out, code, err := sb.Run(context.Background(), "cat victim && echo scratch > /tmp/min-scratch && cat /tmp/min-scratch", root, 10*time.Second, execMaxBytes)
+	out, code, err := sb.Run(context.Background(), "cat victim && echo scratch > /tmp/mingo-scratch && cat /tmp/mingo-scratch", root, 10*time.Second, execMaxBytes)
 	if err != nil || code != 0 || !strings.Contains(out, "keep") || !strings.Contains(out, "scratch") {
 		t.Fatalf("read-only must still read the root and write to tmp: code=%d err=%v out=%s", code, err, out)
 	}

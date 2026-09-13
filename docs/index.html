@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>min.go: a small agent runtime in one Go file</title>
-<meta name="description" content="min.go: minimize machinery, not capability. A tool loop, a sandbox that says what it enforces, and a session log that survives interruption, in one Go file.">
-<meta property="og:title" content="min.go">
+<title>mingo: a small agent runtime in one Go file</title>
+<meta name="description" content="mingo: minimize machinery, not capability. A tool loop, a sandbox that says what it enforces, and a session log that survives interruption, in one Go file.">
+<meta property="og:title" content="mingo">
 <meta property="og:description" content="A small agent runtime in one Go file. Small enough to understand. Built to do real work.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://lroolle.github.io/min.go/">
+<meta property="og:url" content="https://lroolle.github.io/mingo/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap" rel="stylesheet">
@@ -127,17 +127,17 @@
 <main>
   <header>
     <div>
-      <h1 class="wordmark"><u>min</u><span class="go">.go</span></h1>
+      <h1 class="wordmark"><u>min</u><span class="go">go</span></h1>
       <p class="tag">A small agent runtime in one Go file.<small>Small enough to understand. Built to do real work.</small></p>
     </div>
     <nav>
-      <a href="https://github.com/lroolle/min.go">github</a>
-      <a href="https://github.com/lroolle/min.go#readme">readme</a>
-      <a href="https://github.com/lroolle/min.go/releases">releases</a>
+      <a href="https://github.com/lroolle/mingo">github</a>
+      <a href="https://github.com/lroolle/mingo#readme">readme</a>
+      <a href="https://github.com/lroolle/mingo/releases">releases</a>
     </nav>
   </header>
 
-  <div class="stage" id="stage" aria-label="an animated sketch of the min loop: a tiny agent moves from read to edit to exec inside a sandbox fence and comes back with a receipt">
+  <div class="stage" id="stage" aria-label="an animated sketch of the mingo loop: a tiny agent moves from read to edit to exec inside a sandbox fence and comes back with a receipt">
     <svg viewBox="0 0 860 380" role="img">
       <!-- the fence: the sandbox -->
       <path class="ink fence" d="M40 60 L820 60 L820 300 L40 300 Z"/>
@@ -180,7 +180,7 @@
         <text y="52" text-anchor="middle" class="soft">once, verified</text>
       </g>
 
-      <!-- the little min -->
+      <!-- the little mingo -->
       <g id="minny" transform="translate(110 148)">
         <g class="bob">
           <circle class="body" r="11"/>
@@ -209,7 +209,7 @@
 
       <!-- the session tape -->
       <g class="tape" transform="translate(52 330)">
-        <text x="0" y="0" class="soft">.min/sessions/20260913-081502-9c1a2f.jsonl  (fsync after every line)</text>
+        <text x="0" y="0" class="soft">.mingo/sessions/20260913-081502-9c1a2f.jsonl  (fsync after every line)</text>
         <text x="0" y="22" id="tape-line">{"role":"user","content":"Add has a bug. Fix it."}</text>
         <text x="806" y="22" text-anchor="end" class="blink">_</text>
       </g>
@@ -225,7 +225,7 @@
   </div>
 
   <h2><span class="n">1</span>Minimize machinery, not capability.</h2>
-  <p>min is a tool loop over any OpenAI-compatible endpoint: a llama-server on your own machine, DeepSeek, OpenRouter, or OpenAI's Responses API. It is built so that a 4B model on a laptop CPU can deliver, not demo. The harness checks what the model claims, refuses what it cannot verify, closes every loop the model leaves open, and keeps the transcript small.</p>
+  <p>mingo is a tool loop over any OpenAI-compatible endpoint: a llama-server on your own machine, DeepSeek, OpenRouter, or OpenAI's Responses API. It is built so that a 4B model on a laptop CPU can deliver, not demo. The harness checks what the model claims, refuses what it cannot verify, closes every loop the model leaves open, and keeps the transcript small.</p>
   <div class="three">
     <div class="card">
       <svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 22 a14 14 0 1 1 14 14"/><path d="M22 36 l-5 -5 M22 36 l5 -5"/></svg>
@@ -246,16 +246,16 @@
 
   <h2><span class="n">2</span>Run it.</h2>
 <pre><i># build, then talk to a model</i>
-go build -o min . &amp;&amp; DEEPSEEK_API_KEY=... ./min
+go build -o mingo . &amp;&amp; DEEPSEEK_API_KEY=... ./mingo
 
 <i># a 4B model on this machine, no key</i>
-./min -provider local
+./mingo -provider local
 
 <i># one key, a few hundred models</i>
-OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
+OPENROUTER_API_KEY=... ./mingo -provider openrouter -model openai/gpt-6-astra
 
 <i># headless: the answer on stdout, the outcome in the exit code</i>
-./min -json -p "Add has a bug. Fix it, verify with go vet, and report."
+./mingo -json -p "Add has a bug. Fix it, verify with go vet, and report."
 <b>{"outcome":"done","written":["add.go"],"requests":5, ...}</b></pre>
 
   <h2><span class="n">3</span>What the loop guarantees.</h2>
@@ -281,9 +281,9 @@ OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
   </table>
 
   <footer>
-    <span class="hand">min.go</span>
-    <a href="https://github.com/lroolle/min.go">source</a>
-    <a href="https://github.com/lroolle/min.go/blob/main/README.md">the long version</a>
+    <span class="hand">mingo</span>
+    <a href="https://github.com/lroolle/mingo">source</a>
+    <a href="https://github.com/lroolle/mingo/blob/main/README.md">the long version</a>
     <span>MIT. One file, standard library only, POSIX.</span>
   </footer>
 </main>
@@ -307,7 +307,7 @@ OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
   let at = 0, busy = false, playing = false, round = 0, timer = null, queued = 0;
 
   const pointAt = (path, t) => path.getPointAtLength(t * path.getTotalLength());
-  // the min walks a hand's width above the track, so the station labels stay readable
+  // the mingo walks a hand's width above the track, so the station labels stay readable
   const place = (p) => minny.setAttribute('transform', `translate(${p.x.toFixed(1)} ${(p.y - 42).toFixed(1)})`);
   const ease = (t) => t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
@@ -316,7 +316,7 @@ OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
       if (reduced) { place(pointAt(path, to)); return done(); }
       const t0 = performance.now();
       const frame = (now) => {
-        const k = Math.min(1, (now - t0) / ms);
+        const k = Math.mingo(1, (now - t0) / ms);
         place(pointAt(path, from + (to - from) * ease(k)));
         k < 1 ? requestAnimationFrame(frame) : done();
       };
@@ -334,7 +334,7 @@ OPENROUTER_API_KEY=... ./min -provider openrouter -model openai/gpt-6-astra
   }
 
   async function step() {
-    if (busy) { queued = Math.min(queued + 1, 3); return; } // a key pressed mid-hop is not lost
+    if (busy) { queued = Math.mingo(queued + 1, 3); return; } // a key pressed mid-hop is not lost
     busy = true;
     if (at >= stations.length) {
       // a new turn: walk the loop back home
