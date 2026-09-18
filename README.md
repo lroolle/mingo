@@ -190,7 +190,7 @@ and tool lines on stderr; notes and the receipt stay.
 | key | `DEEPSEEK_API_KEY` | `OPENAI_API_KEY` | `OPENROUTER_API_KEY` | none |
 | endpoint | api.deepseek.com | api.openai.com/v1/responses | openrouter.ai/api/v1 | 127.0.0.1:8080/v1 |
 | wire | chat completions | Responses API | chat completions | chat completions |
-| default model | `deepseek-flash` (the vendor's floating alias; `deepseek-v4-pro` for the big one) | `gpt-6-astra` | `deepseek/deepseek-v4.1-flash` | whatever is loaded |
+| default model | `deepseek-flash` (DeepSeek-V4.1-Flash since 2026-09-10, a floating alias; `-model deepseek-v4-pro` still works) | `gpt-6-astra` | `deepseek/deepseek-v4.1-flash` | whatever is loaded |
 | context | 128000 | 922000 | 128000 | read from the server's `/props` |
 | thinking | `thinking.type` + `reasoning_effort` (low, high, max) | `reasoning.effort` (low, medium, high, xhigh, max) | `reasoning.effort` / `reasoning.enabled` (any of those; the model decides what it honours) | `chat_template_kwargs.enable_thinking` |
 | reasoning replay | every assistant message carries `reasoning_content` when tools are present, even empty, or the API answers 400 | the encrypted reasoning items come back and are replayed verbatim; nothing is stored server-side | stripped | stripped |
